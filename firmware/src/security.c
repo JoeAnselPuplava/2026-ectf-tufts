@@ -10,6 +10,7 @@
  *
  * @copyright Copyright (c) 2026 The MITRE Corporation
  */
+#include "secrets.h"
 #include "security.h"
 #include "host_messaging.h"
 
@@ -20,6 +21,12 @@ bool check_pin(unsigned char *pin) {
     // This function currently does nothing. Your team should add the
     // appropriate security checks here to implement the security
     // requirements.
+    for (int i = 0; i < PIN_LENGTH; i++) {
+        if (pin[i] != HSM_PIN[i]) {
+            return false;
+        }
+    }
+    
     return true;
 }
 
