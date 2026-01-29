@@ -47,7 +47,6 @@ void generate_list_files(list_response_t *file_list) {
     }
 }
 
-
 /**********************************************************
  ******************** COMMAND HANDLERS ********************
  **********************************************************/
@@ -67,7 +66,7 @@ int list(uint16_t pkt_len, uint8_t *buf) {
 
     // copy relevant fields into the final struct
     generate_list_files(&file_list);
-
+    
     if (!check_pin(command->pin)) {
         print_error("Invalid pin");
         return -1;

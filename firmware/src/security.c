@@ -37,7 +37,7 @@ bool check_pin(unsigned char *pin) {
         print_debug("PIN OK\n");
         return true;
     } else {
-        print_error("Invalid PIN\n");
+        print_debug("PIN INVALID\n");
         return false;
     }
 }
@@ -52,5 +52,33 @@ bool validate_permission(uint16_t group_id, permission_enum_t perm) {
     // This function currently does nothing. Your team should add the
     // appropriate security checks here to implement the security
     // requirements.
-    return true;
+    for(int i = 0; i < MAX_PERMS; i++) {
+        if (global_permissions[i].group_id == group_id) {
+            switch (perm) {
+                case PERM_READ:
+                    if (global_permissions[i].read) {
+                        print_debug("Read permission granted\n");
+                        return true;
+                    }
+                    break;
+                case PERM_WRITE:
+                    if (global_permissions[i].write) {
+                        print_debug("Write permission granted\n");
+                        return true;
+                    }
+                    break;
+                case PERM_RECEIVE:
+                    if (global_permissions[i].receive) {
+                        print_debug("Receive permission granted\n");
+                        return true;
+                    }
+                    break;
+                default:
+                    print_error("Invalid permission type\n");
+                    return false;
+            }
+        }
+    }
+
+    return false;
 }
