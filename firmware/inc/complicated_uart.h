@@ -1,7 +1,7 @@
 /**
- * @file "simple_uart.h"
- * @author Samuel Meyers
- * @brief Simple UART Interface Header
+ * @file "complicated_uart.h"
+ * @author Patrick Johnson
+ * @brief Modified Simple UART Interface
  * @date 2026
  *
  * This source file is part of an example system for MITRE's 2026 Embedded CTF (eCTF).

@@ -26,7 +26,7 @@
 int read_bytes(int uart_id, void *buf, uint16_t len) {
     int result;
     int i;
-
+    
     for (i = 0; i < len; i++) {
         if (i % 256 == 0 && i != 0) { // Send an ACK after receiving 256 bytes
             write_ack(uart_id);
