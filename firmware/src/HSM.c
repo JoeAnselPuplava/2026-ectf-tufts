@@ -23,7 +23,7 @@
 #include "filesystem.h"
 #include "ti_msp_dl_config.h"
 #include "status_led.h"
-#include "simple_uart.h"
+#include "complicated_uart.h"
 
 /* Code between this #ifdef and the subsequent #endif will
 *  be ignored by the compiler if CRYPTO_EXAMPLE is not set in

@@ -14,7 +14,7 @@ LINKERFILE = "firmware.ld"
 CRYPTO_EXAMPLE = 0
 
 OBJECTS = $(BUILDDIR)/HSM.so \
-    $(BUILDDIR)/simple_uart.so \
+    $(BUILDDIR)/complicated_uart.so \
     $(BUILDDIR)/ti_msp_dl_config.so \
     $(BUILDDIR)/startup_mspm0l222x_ticlang.so \
     $(BUILDDIR)/simple_flash.so \

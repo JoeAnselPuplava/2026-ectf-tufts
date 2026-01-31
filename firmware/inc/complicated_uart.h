@@ -12,8 +12,8 @@
  */
 
 
-#ifndef __SIMPLE_UART__
-#define __SIMPLE_UART__
+#ifndef __COMPLICATED_UART__
+#define __COMPLICATED_UART__
 
 #include <stdio.h>
 #include <stdint.h>

@@ -95,6 +95,7 @@ int write_bytes(int uart_id, const void *buf, uint16_t len, bool should_ack) {
     return MSG_OK;
 }
 
+//FOR DEBUG ONLY
 /** @brief Write len bytes to UART in hex. 2 bytes will be printed for every byte.
  *
  *  @param uart_id The id of the uart where the message is to be sent

@@ -11,7 +11,7 @@
  * @copyright Copyright (c) 2026 The MITRE Corporation
  */
 
-#include "simple_uart.h"
+#include "complicated_uart.h"
 
 /**********************************************************
  *************** HARDWARE ABSTRACTIONS ********************
@@ -30,6 +30,10 @@ UART_Regs *get_uart_handle(int uart_id) {
     // }
     if (uart_id > 0 && uart_id < CONFIG_UART_COUNT) {
         return uart_inst[uart_id];
+    }
+    else 
+    {
+        return NULL;
     }
 }
 
