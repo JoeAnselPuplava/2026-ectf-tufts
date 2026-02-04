@@ -17,7 +17,10 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     make \
     wget \
     build-essential \
-    unzip
+    unzip \
+    git \
+    clang-format-19 \
+    bear
 
 ENV MSPM0_SDK_INSTALL_DIR=/opt/mspm0-sdk-mspm0_sdk_2_06_00_05
 ENV TICLANG_ARMCOMPILER=/opt/ti-cgt-armllvm_4.0.3.LTS
@@ -26,6 +29,9 @@ ENV TICLANG_ARMCOMPILER=/opt/ti-cgt-armllvm_4.0.3.LTS
 RUN wget https://github.com/TexasInstruments/mspm0-sdk/archive/refs/tags/mspm0_sdk_2_06_00_05.zip && \
     unzip mspm0_sdk_2_06_00_05.zip -d /opt && \
     rm -f -r mspm0_sdk_2_06_00_05.zip ${MSPM0_SDK_INSTALL_DIR}/docs ${MSPM0_SDK_INSTALL_DIR}/examples
+
+# Install wolfssl
+RUN git clone https://github.com/wolfSSL/wolfssl.git /opt/wolfssl
 
 # Install TI-Clang for curr machine's arch
 RUN if [ $(uname -m) = "x86_64" ]; then \
@@ -39,7 +45,14 @@ RUN if [ $(uname -m) = "x86_64" ]; then \
     ./ti_cgt_armllvm_4.0.3.LTS_linux_installer.bin --mode unattended --prefix /opt && \
     rm -f ti_cgt_armllvm_4.0.3.LTS_linux_installer.bin
 
+ENV IN_CONTAINER=1
+
+# VOLUME [ "/wolfssl_patch/src" ]
+# RUN mv /hsm/src/random.c /opt/wolfssl/wolfcrypt/src/random.c
+
 WORKDIR /hsm
 
-ENTRYPOINT ["bash", "/hsm/build.sh"]
+# ENTRYPOINT ["bash", "/hsm/build.sh"]
+# ENTRYPOINT ["bash", "/build.sh build"]
+ENTRYPOINT ["/bin/bash", "/hsm/build.sh", "build"]
 
