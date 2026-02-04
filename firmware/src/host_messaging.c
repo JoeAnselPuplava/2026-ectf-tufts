@@ -15,6 +15,24 @@
 
 #include "host_messaging.h"
 
+/** @brief Read a msg header from UART.
+ *
+ *  @param hdr Pointer to a buffer where the incoming bytes should be stored.
+*/
+void read_header(int uart_id, msg_header_t *hdr) {
+    hdr->magic = uart_readbyte(uart_id);
+    while (hdr->magic != MSG_MAGIC) {
+        hdr->magic = uart_readbyte(uart_id);
+    }
+    hdr->cmd = uart_readbyte(uart_id); //opcode
+
+    uint16_t len_lo = (uint16_t)uart_readbyte(uart_id);
+    uint16_t len_hi = (uint16_t)uart_readbyte(uart_id);
+    hdr->len = (len_hi << 8) | len_lo;
+
+    read_bytes(uart_id, &hdr->len, 2);
+
+}
 
 /** @brief Read len bytes from UART, acknowledging after every 256 bytes.
  *
@@ -26,7 +44,13 @@
 int read_bytes(int uart_id, void *buf, uint16_t len) {
     int result;
     int i;
-    
+    if (buf == NULL) {
+        return MSG_BAD_PTR;
+    }
+    if (len < 0 || len > MAX_FILE_SIZE) {
+        return MSG_BAD_LEN;
+    }
+
     for (i = 0; i < len; i++) {
         if (i % 256 == 0 && i != 0) { // Send an ACK after receiving 256 bytes
             write_ack(uart_id);
@@ -41,21 +65,6 @@ int read_bytes(int uart_id, void *buf, uint16_t len) {
     return MSG_OK;
 }
 
-/** @brief Read a msg header from UART.
- *
- *  @param hdr Pointer to a buffer where the incoming bytes should be stored.
-*/
-void read_header(int uart_id, msg_header_t *hdr) {
-    hdr->magic = uart_readbyte(uart_id);
-    // Any bytes until '%' will be read, but ignored.
-    // Once we receive a '%', continue with processing the rest of the message.
-    while (hdr->magic != MSG_MAGIC) {
-        hdr->magic = uart_readbyte(uart_id);
-    }
-    hdr->cmd = uart_readbyte(uart_id);
-    read_bytes(uart_id, &hdr->len, sizeof(hdr->len));
-}
-
 /** @brief Receive an ACK from UART.
  *
  *  @return MSG_OK on success. A negative value on error.
@@ -64,7 +73,7 @@ int read_ack(int uart_id) {
     msg_header_t ack_buf = {0};
 
     read_header(uart_id, &ack_buf);
-    if (ack_buf.cmd == ACK_MSG) {
+    if (ack_buf.cmd == ACK_MSG && ack_buf.len == 0) {
         return MSG_OK;
     } else {
         return MSG_NO_ACK;
@@ -83,7 +92,7 @@ int read_ack(int uart_id) {
 int write_bytes(int uart_id, const void *buf, uint16_t len, bool should_ack) {
     for (int i = 0; i < len; i++) {
         if (i % 256 == 0 && i != 0) {  // Expect an ACK after sending every 256 bytes
-            if (should_ack && read_ack(uart_id) < 0) {
+            if (should_ack && (read_ack(uart_id) != MSG_OK)) {
                 return MSG_NO_ACK;
             }
         }
@@ -94,6 +103,7 @@ int write_bytes(int uart_id, const void *buf, uint16_t len, bool should_ack) {
 
     return MSG_OK;
 }
+//////////////////////////////////////////////////////////////////////////////////
 
 
 
@@ -115,6 +125,10 @@ int write_packet(int uart_id, msg_type_t type, const void *buf, uint16_t len) {
     hdr.len = len;
 
     result = write_bytes(uart_id, &hdr, MSG_HEADER_SIZE, false);
+
+    if (len < 0 || len > MAX_FILE_SIZE) {
+        return MSG_BAD_LEN;
+    }
 
     // ACKs don't need a response
     if (type == ACK_MSG) {

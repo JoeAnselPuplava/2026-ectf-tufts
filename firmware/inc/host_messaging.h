@@ -23,6 +23,7 @@
 #define CMD_TYPE_LEN sizeof(char)
 #define CMD_LEN_LEN sizeof(uint16_t)
 #define MSG_MAGIC '%'       // '%' - 0x25
+#define MAX_FILE_SIZE 8192
 
 typedef enum {
     LIST_MSG = 'L',         // 'L' - 0x4c
