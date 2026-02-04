@@ -182,10 +182,10 @@ int main(void) {
 
             // Print the boot flag
             // TODO: Remove this from your design
-            boot_flag();
 
             STATUS_LED_OFF();
             list(pkt_len, uart_buf);
+            print_debug("List command complete\n");
             break;
 
         // Handle read command

@@ -338,3 +338,8 @@ wolfssl/
 *.secrets.txt
 **/secrets.h
 uv.lock
+
+
+# Allow wolfSSL submodule in firmware
+!firmware/wolfssl/
+!firmware/wolfssl/**

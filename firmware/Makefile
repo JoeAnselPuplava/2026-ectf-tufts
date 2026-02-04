@@ -23,7 +23,8 @@ OBJECTS = $(BUILDDIR)/HSM.so \
     $(BUILDDIR)/filesystem.so \
     $(BUILDDIR)/commands.so
 
-ifeq ($(CRYPTO_EXAMPLE), 1)
+
+ifeq ($(CRYPTO_EXAMPLE), 0)
 OBJECTS += $(BUILDDIR)/simple_crypto.so
 
 # change C flags
@@ -48,6 +49,9 @@ CFLAGS += -I./wolfssl
 # we need to build these objects for the simple crypto example
 OBJECTS += $(WOLFSSL_INC)/aes.o $(WOLFSSL_INC)/hash.o
 OBJECTS += $(WOLFSSL_INC)/md5.o $(WOLFSSL_INC)/cryptocb.o
+
+# Added Objects for the PIN SHA`256 hashing
+OBJECTS += $(WOLFSSL_INC)/sha.o $(WOLFSSL_INC)/sha256.o
 endif
 
 NAME = hsm
@@ -86,7 +90,7 @@ $(BUILDDIR)/%.so: ./src/%.c | $(BUILDDIR)
 	@ $(CC) $(CFLAGS) -c $< -o $@
 
 # if compiling with the crypto example, compile all crypto objects
-ifeq ($(CRYPTO_EXAMPLE), 1)
+ifeq ($(CRYPTO_EXAMPLE), 0)
 $(WOLFSSL_INC)/%.o: $(WOLFSSL_INC)/%.c
 	@ echo Building $@
 	@ $(CC) $(CFLAGS) -c $< -o $@
