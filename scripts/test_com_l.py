@@ -11,10 +11,15 @@ def list_files():
 def success_list_files(suppress_output=False):
     res = list_files()
 
-    logs = res.stderr
+    logs = res.stdout
+    msg = (
+        r"Got DEBUG message: b'Boot Reference Flag: ectf\{boot_e2218e27c4d4255d\}\\n'\n"
+        r"Got DEBUG message: b'Checking PIN\\n'\n"
+        r"List successful"
+    )
 
     test_common.check_result(
-        "Got DEBUG message: b'Checking PIN\n'List successful", 
+        msg, 
         logs, 
         "success_list_files"
     )

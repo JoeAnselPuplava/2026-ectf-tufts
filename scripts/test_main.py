@@ -67,7 +67,7 @@ def main():
     delete_test_files() 
 
     # start calling tests 
-    if test_common.VERBOSE
+    if test_common.VERBOSE:
         logger.info("Start testing - list")
 
     success_list_files()

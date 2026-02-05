@@ -1,6 +1,8 @@
 # var initialization and shared testing functions 
 import os 
 import re
+import subprocess
+from loguru import logger 
 
 from loguru import logger
 
@@ -32,14 +34,20 @@ def check_result(pattern, in_str, out_str):
 # run actual command call 
 def host_call(cmd): 
     # potentially add virtual environment 
-    command = ["uvx ectf tools", UART_PORT, cmd, PIN]
+    command = ["uvx",
+               "ectf",
+               "tools", 
+               UART_PORT, 
+               cmd, 
+               PIN]
 
     if VERBOSE:
         logger.info(command)
 
     env = os.environ
     env["LOGURU_COLORIZE"] = "NO"
-    res = subprocess.run(cmd, 
+    
+    res = subprocess.run(command, 
                          capture_output=True, 
                          text=True, 
                          env=env)
