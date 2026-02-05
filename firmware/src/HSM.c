@@ -24,6 +24,8 @@
 #include "ti_msp_dl_config.h"
 #include "status_led.h"
 #include "complicated_uart.h"
+#include "simple_uart.h"
+#include "pin_lockout.h"
 
 /* Code between this #ifdef and the subsequent #endif will
 *  be ignored by the compiler if CRYPTO_EXAMPLE is not set in
@@ -182,10 +184,11 @@ int main(void) {
 
             // Print the boot flag
             // TODO: Remove this from your design
-            boot_flag();
 
             STATUS_LED_OFF();
+            // pin_lockout();
             list(pkt_len, uart_buf);
+            print_debug("List command complete\n");
             break;
 
         // Handle read command

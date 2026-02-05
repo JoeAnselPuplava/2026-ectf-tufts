@@ -59,7 +59,7 @@ SECTIONS
     .ARM.exidx    : palign(8) {} > FLASH
     .init_array   : palign(8) {} > FLASH
     .binit        : palign(8) {} > FLASH
-    .files        : palign(8)
+    .files        : palign(8) {} > FLASH
     .TI.ramfunc   : load = FLASH, palign(8), run=SRAM, table(BINIT)
 
     .vtable :   > SRAM
@@ -72,3 +72,7 @@ SECTIONS
     .BCRConfig  : {} > BCR_CONFIG
     .BSLConfig  : {} > BSL_CONFIG
 }
+
+/* Define APP2 symbols outside SECTIONS block */
+app2_start = 0x0003A400;
+app2_end = 0x00040000;
