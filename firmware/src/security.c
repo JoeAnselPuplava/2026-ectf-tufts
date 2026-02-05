@@ -18,7 +18,7 @@
 bool check_pin(unsigned char *pin) {
     print_debug("Checking PIN\n");
 
-    uint8_t hash[WC_SHA256_DIGEST_SIZE];
+    uint8_t hash[WC_SHA256_DIGEST_SIZE] = {0};
     wc_Sha256 sha;
 
     /* Initialize SHA-256 */
@@ -28,10 +28,19 @@ bool check_pin(unsigned char *pin) {
     }
 
     /* Hash the provided PIN */
-    wc_Sha256Update(&sha, pin, (word32)strlen((char *)pin));
+    wc_Sha256Update(&sha, pin, 6);
     wc_Sha256Final(&sha, hash);
     wc_Sha256Free(&sha);
 
+    // char output_buf1[128] = {0};
+    // char output_buf2[128] = {0};
+    // char output_buf3[128] = {0};
+    // sprintf(output_buf1, "pinHash is %s\n", HSM_PIN_HASH);
+    // print_debug(output_buf1);
+    // sprintf(output_buf2, "pin hash is %s\n", hash);
+    // print_debug(output_buf2);
+    // sprintf(output_buf3, "pin given is %s\n", pin);
+    // print_debug(output_buf3);
     /* Compare against stored hash */
     if (memcmp(hash, HSM_PIN_HASH, WC_SHA256_DIGEST_SIZE) == 0) {
         print_debug("PIN OK\n");
