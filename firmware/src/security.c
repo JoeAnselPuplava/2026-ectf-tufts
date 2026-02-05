@@ -10,17 +10,45 @@
  *
  * @copyright Copyright (c) 2026 The MITRE Corporation
  */
+#include "secrets.h"
 #include "security.h"
 #include "host_messaging.h"
+#include <wolfssl/wolfcrypt/sha256.h>
 
 bool check_pin(unsigned char *pin) {
     print_debug("Checking PIN\n");
 
-    // TODO: the reference design doesn't implement *ANY* security.
-    // This function currently does nothing. Your team should add the
-    // appropriate security checks here to implement the security
-    // requirements.
-    return true;
+    uint8_t hash[WC_SHA256_DIGEST_SIZE] = {0};
+    wc_Sha256 sha;
+
+    /* Initialize SHA-256 */
+    if (wc_InitSha256(&sha) != 0) {
+        print_error("SHA256 init failed\n");
+        return false;
+    }
+
+    /* Hash the provided PIN */
+    wc_Sha256Update(&sha, pin, 6);
+    wc_Sha256Final(&sha, hash);
+    wc_Sha256Free(&sha);
+
+    // char output_buf1[128] = {0};
+    // char output_buf2[128] = {0};
+    // char output_buf3[128] = {0};
+    // sprintf(output_buf1, "pinHash is %s\n", HSM_PIN_HASH);
+    // print_debug(output_buf1);
+    // sprintf(output_buf2, "pin hash is %s\n", hash);
+    // print_debug(output_buf2);
+    // sprintf(output_buf3, "pin given is %s\n", pin);
+    // print_debug(output_buf3);
+    /* Compare against stored hash */
+    if (memcmp(hash, HSM_PIN_HASH, WC_SHA256_DIGEST_SIZE) == 0) {
+        print_debug("PIN OK\n");
+        return true;
+    } else {
+        print_debug("PIN INVALID\n");
+        return false;
+    }
 }
 
 bool validate_permission(uint16_t group_id, permission_enum_t perm) {
@@ -33,5 +61,33 @@ bool validate_permission(uint16_t group_id, permission_enum_t perm) {
     // This function currently does nothing. Your team should add the
     // appropriate security checks here to implement the security
     // requirements.
-    return true;
+    for(int i = 0; i < MAX_PERMS; i++) {
+        if (global_permissions[i].group_id == group_id) {
+            switch (perm) {
+                case PERM_READ:
+                    if (global_permissions[i].read) {
+                        print_debug("Read permission granted\n");
+                        return true;
+                    }
+                    break;
+                case PERM_WRITE:
+                    if (global_permissions[i].write) {
+                        print_debug("Write permission granted\n");
+                        return true;
+                    }
+                    break;
+                case PERM_RECEIVE:
+                    if (global_permissions[i].receive) {
+                        print_debug("Receive permission granted\n");
+                        return true;
+                    }
+                    break;
+                default:
+                    print_error("Invalid permission type\n");
+                    return false;
+            }
+        }
+    }
+
+    return false;
 }

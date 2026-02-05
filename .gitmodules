@@ -1,0 +1,3 @@
+[submodule "firmware/wolfssl"]
+	path = firmware/wolfssl
+	url = https://github.com/wolfSSL/wolfssl.git

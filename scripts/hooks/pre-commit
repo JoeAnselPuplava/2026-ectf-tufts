@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Pre-commit hook: check formatting
+
+if ! scripts/check-format.sh; then
+    printf '\e[1;31m'
+    printf '==== WARNING: Unformatted code found! '
+    printf 'If this was included in the commit, you must fix it before merging...'
+    printf '\e[0m\n'
+fi
