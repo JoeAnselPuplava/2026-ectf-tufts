@@ -15,6 +15,24 @@
 
 #include "host_messaging.h"
 
+/** @brief Read a msg header from UART.
+ *
+ *  @param hdr Pointer to a buffer where the incoming bytes should be stored.
+*/
+void read_header(int uart_id, msg_header_t *hdr) {
+    hdr->magic = uart_readbyte(uart_id);
+    while (hdr->magic != MSG_MAGIC) {
+        hdr->magic = uart_readbyte(uart_id);
+    }
+    hdr->cmd = uart_readbyte(uart_id); //opcode
+
+    uint16_t len_lo = (uint16_t)uart_readbyte(uart_id);
+    uint16_t len_hi = (uint16_t)uart_readbyte(uart_id);
+    hdr->len = (len_hi << 8) | len_lo;
+
+    read_bytes(uart_id, &hdr->len, 2);
+
+}
 
 /** @brief Read len bytes from UART, acknowledging after every 256 bytes.
  *
@@ -26,6 +44,12 @@
 int read_bytes(int uart_id, void *buf, uint16_t len) {
     int result;
     int i;
+    if (buf == NULL) {
+        return MSG_BAD_PTR;
+    }
+    if (len < 0 || len > MAX_FILE_SIZE) {
+        return MSG_BAD_LEN;
+    }
 
     for (i = 0; i < len; i++) {
         if (i % 256 == 0 && i != 0) { // Send an ACK after receiving 256 bytes
@@ -41,21 +65,6 @@ int read_bytes(int uart_id, void *buf, uint16_t len) {
     return MSG_OK;
 }
 
-/** @brief Read a msg header from UART.
- *
- *  @param hdr Pointer to a buffer where the incoming bytes should be stored.
-*/
-void read_header(int uart_id, msg_header_t *hdr) {
-    hdr->magic = uart_readbyte(uart_id);
-    // Any bytes until '%' will be read, but ignored.
-    // Once we receive a '%', continue with processing the rest of the message.
-    while (hdr->magic != MSG_MAGIC) {
-        hdr->magic = uart_readbyte(uart_id);
-    }
-    hdr->cmd = uart_readbyte(uart_id);
-    read_bytes(uart_id, &hdr->len, sizeof(hdr->len));
-}
-
 /** @brief Receive an ACK from UART.
  *
  *  @return MSG_OK on success. A negative value on error.
@@ -64,7 +73,7 @@ int read_ack(int uart_id) {
     msg_header_t ack_buf = {0};
 
     read_header(uart_id, &ack_buf);
-    if (ack_buf.cmd == ACK_MSG) {
+    if (ack_buf.cmd == ACK_MSG && ack_buf.len == 0) {
         return MSG_OK;
     } else {
         return MSG_NO_ACK;
@@ -81,9 +90,16 @@ int read_ack(int uart_id) {
  *  @return MSG_OK on success, else other msg_status_t
 */
 int write_bytes(int uart_id, const void *buf, uint16_t len, bool should_ack) {
+    if (buf == NULL) {
+        return MSG_BAD_PTR;
+    }
+    if (len < 0 || len > MAX_FILE_SIZE) {
+        return MSG_BAD_LEN;
+    }
+
     for (int i = 0; i < len; i++) {
         if (i % 256 == 0 && i != 0) {  // Expect an ACK after sending every 256 bytes
-            if (should_ack && read_ack(uart_id) < 0) {
+            if (should_ack && (read_ack(uart_id) != MSG_OK)) {
                 return MSG_NO_ACK;
             }
         }
@@ -94,44 +110,9 @@ int write_bytes(int uart_id, const void *buf, uint16_t len, bool should_ack) {
 
     return MSG_OK;
 }
+//////////////////////////////////////////////////////////////////////////////////
 
-/** @brief Write len bytes to UART in hex. 2 bytes will be printed for every byte.
- *
- *  @param uart_id The id of the uart where the message is to be sent
- *  @param type Message type.
- *  @param buf Pointer to the bytes that will be printed.
- *  @param len The number of bytes to print.
- *
- *  @return MSG_OK on success, else other msg_status_t
-*/
-int write_hex(int uart_id, msg_type_t type, const void *buf, size_t len) {
-    msg_header_t hdr;
-    int i;
 
-    char hexbuf[128];
-
-    hdr.magic = MSG_MAGIC;
-    hdr.cmd = type;
-    hdr.len = len*2;
-
-    write_bytes(uart_id, &hdr, MSG_HEADER_SIZE, false /* should_ack */);
-    if (type != DEBUG_MSG && read_ack(uart_id) != MSG_OK) {
-        // If the header was not ack'd, don't send the message
-        return MSG_NO_ACK;
-    }
-
-    for (i = 0; i < len; i++) {
-        if (i % (256 / 2) == 0 && i != 0) {
-            if (type != DEBUG_MSG && read_ack(uart_id) != MSG_OK) {
-                // If the block was not ack'd, don't send the rest of the message
-                return MSG_NO_ACK;
-            }
-        }
-        snprintf(hexbuf, sizeof(hexbuf), "%02x", ((uint8_t *)buf)[i]);
-        write_bytes(uart_id, hexbuf, 2, false);
-    }
-    return MSG_OK;
-}
 
 /** @brief Send a message to the host, expecting an ack after every 256 bytes.
  *
@@ -149,6 +130,13 @@ int write_packet(int uart_id, msg_type_t type, const void *buf, uint16_t len) {
     hdr.magic = MSG_MAGIC;
     hdr.cmd = type;
     hdr.len = len;
+
+    if (buf == NULL) {
+        return MSG_BAD_PTR;
+    }
+    if (len < 0 || len > MAX_FILE_SIZE) {
+        return MSG_BAD_LEN;
+    }
 
     result = write_bytes(uart_id, &hdr, MSG_HEADER_SIZE, false);
 
@@ -179,7 +167,7 @@ int write_packet(int uart_id, msg_type_t type, const void *buf, uint16_t len) {
  *  @param uart_id The id of the uart where the message is to be sent
  *  @param cmd A pointer to the resulting opcode of the packet. Must not be null.
  *  @param buf A pointer to a buffer to store the incoming packet. Can be null.
- *  @param len A pointer to the resulting length of the packet. Can be null.
+ *  @param len A pointer to the max length of the packet. Can be null.
  *
  *  @return MSG_OK on success, else other msg_status_t
 */
@@ -196,7 +184,7 @@ int read_packet(int uart_id, msg_type_t* cmd, void *buf, uint16_t *len) {
     *cmd = header.cmd;
 
     if (len != NULL) {
-        if (*len && header.len > *len) {
+        if (*len && (header.len > *len)) {
             *len = 0;
             return MSG_BAD_LEN;
         }
@@ -219,3 +207,42 @@ int read_packet(int uart_id, msg_type_t* cmd, void *buf, uint16_t *len) {
     }
     return MSG_OK;
 }
+
+// //FOR DEBUG ONLY
+// /** @brief Write len bytes to UART in hex. 2 bytes will be printed for every byte.
+//  *
+//  *  @param uart_id The id of the uart where the message is to be sent
+//  *  @param type Message type.
+//  *  @param buf Pointer to the bytes that will be printed.
+//  *  @param len The number of bytes to print.
+//  *
+//  *  @return MSG_OK on success, else other msg_status_t
+// */
+// int write_hex(int uart_id, msg_type_t type, const void *buf, size_t len) {
+//     msg_header_t hdr;
+//     int i;
+
+//     char hexbuf[128];
+
+//     hdr.magic = MSG_MAGIC;
+//     hdr.cmd = type;
+//     hdr.len = len*2;
+
+//     write_bytes(uart_id, &hdr, MSG_HEADER_SIZE, false /* should_ack */);
+//     if (type != DEBUG_MSG && read_ack(uart_id) != MSG_OK) {
+//         // If the header was not ack'd, don't send the message
+//         return MSG_NO_ACK;
+//     }
+
+//     for (i = 0; i < len; i++) {
+//         if (i % (256 / 2) == 0 && i != 0) {
+//             if (type != DEBUG_MSG && read_ack(uart_id) != MSG_OK) {
+//                 // If the block was not ack'd, don't send the rest of the message
+//                 return MSG_NO_ACK;
+//             }
+//         }
+//         snprintf(hexbuf, sizeof(hexbuf), "%02x", ((uint8_t *)buf)[i]);
+//         write_bytes(uart_id, hexbuf, 2, false);
+//     }
+//     return MSG_OK;
+// }

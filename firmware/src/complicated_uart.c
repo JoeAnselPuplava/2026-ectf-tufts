@@ -1,7 +1,7 @@
 /**
- * @file "simple_uart.c"
- * @author Samuel Meyers
- * @brief UART Interrupt Handler Implementation
+ * @file "complicated_uart.c"
+ * @author Patrick Johnson
+ * @brief Modfied Uart Interface Implementation
  * @date 2026
  *
  * This source file is part of an example system for MITRE's 2026 Embedded CTF (eCTF).
@@ -11,7 +11,7 @@
  * @copyright Copyright (c) 2026 The MITRE Corporation
  */
 
-#include "simple_uart.h"
+#include "complicated_uart.h"
 
 /**********************************************************
  *************** HARDWARE ABSTRACTIONS ********************
@@ -21,12 +21,19 @@
 UART_Regs *uart_inst[] = {UART_0_INST, UART_1_INST};
 
 UART_Regs *get_uart_handle(int uart_id) {
-    if (uart_id < 0 || uart_id > CONFIG_UART_COUNT) {
-        // Default on bad input is 0
-        return uart_inst[0];
-    }
-    else {
+    // if (uart_id < 0 || uart_id > CONFIG_UART_COUNT) {
+    //     // Default on bad input is 0
+    //     return uart_inst[0];
+    // }
+    // else {
+    //     return uart_inst[uart_id];
+    // }
+    if (uart_id > 0 && uart_id < CONFIG_UART_COUNT) {
         return uart_inst[uart_id];
+    }
+    else 
+    {
+        return NULL;
     }
 }
 

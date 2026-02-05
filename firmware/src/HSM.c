@@ -23,6 +23,7 @@
 #include "filesystem.h"
 #include "ti_msp_dl_config.h"
 #include "status_led.h"
+#include "complicated_uart.h"
 #include "simple_uart.h"
 #include "pin_lockout.h"
 
