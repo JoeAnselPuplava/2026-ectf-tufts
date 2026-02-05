@@ -1,0 +1,22 @@
+name: Basic Tests
+on: [push]
+  # pull_request:
+  # push:
+    # branches:
+    # - release
+
+jobs:
+  testcases_check:
+    name: testcases check
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@v4
+    - name: setup
+      run: |
+        
+    - name: flash
+      run: |
+        
+    - name: runtest
+      run: 
