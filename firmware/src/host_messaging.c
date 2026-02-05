@@ -30,7 +30,7 @@ void read_header(int uart_id, msg_header_t *hdr) {
     uint16_t len_hi = (uint16_t)uart_readbyte(uart_id);
     hdr->len = (len_hi << 8) | len_lo;
 
-    read_bytes(uart_id, &hdr->len, 2);
+    // read_bytes(uart_id, &hdr->len, 2);
 
 }
 
@@ -84,7 +84,6 @@ int read_ack(int uart_id) {
  *  @return MSG_OK on success, else other msg_status_t
 */
 int write_bytes(int uart_id, const void *buf, uint16_t len, bool should_ack) {
-
     for (int i = 0; i < len; i++) {
         if (i % 256 == 0 && i != 0) {  // Expect an ACK after sending every 256 bytes
             if (should_ack && (read_ack(uart_id) != MSG_OK)) {
@@ -98,9 +97,6 @@ int write_bytes(int uart_id, const void *buf, uint16_t len, bool should_ack) {
 
     return MSG_OK;
 }
-//////////////////////////////////////////////////////////////////////////////////
-
-
 
 /** @brief Send a message to the host, expecting an ack after every 256 bytes.
  *
@@ -119,7 +115,7 @@ int write_packet(int uart_id, msg_type_t type, const void *buf, uint16_t len) {
     hdr.cmd = type;
     hdr.len = len;
 
-    if ((type == RECEIVE_MSG || type == INTERROGATE_MSG) && len > MAX_FILE_SIZE) {
+    if (len > MAX_FILE_SIZE) {
         return MSG_BAD_LEN;
     }
 
@@ -167,6 +163,10 @@ int read_packet(int uart_id, msg_type_t* cmd, void *buf, uint16_t *len) {
     read_header(uart_id, &header);
 
     *cmd = header.cmd;
+
+    if (header.len > MAX_FILE_SIZE) {
+        return MSG_BAD_LEN;
+    }
 
     if (len != NULL) {
         if (*len && (header.len > *len)) {
