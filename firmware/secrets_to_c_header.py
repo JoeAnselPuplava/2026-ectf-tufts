@@ -17,6 +17,30 @@ from dataclasses import dataclass
 import hashlib
 
 
+# Example P-256 keypair (TESTING ONLY)
+ECC_PUBLIC_KEY_PEM = """-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEZc5xZ6H0L2pD2C2kQpZz1n6QKqYV
+Z2W1ZK6X6jK2q+4q8L2B8JQ4sK1+K0c3zZ0+Kq6pVY9Qe7qYq+5F4Q==
+-----END PUBLIC KEY-----"""
+
+ECC_PRIVATE_KEY_PEM = """-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIC9E7p4R+KXKp3mZ9LJmP9t8p4l8U8nN5R8xJH0FQeZqoAoGCCqGSM49
+AwEHoUQDQgAEZc5xZ6H0L2pD2C2kQpZz1n6QKqYVZ2W1ZK6X6jK2q+4q8L2B8JQ4
+sK1+K0c3zZ0+Kq6pVY9Qe7qYq+5F4Q==
+-----END EC PRIVATE KEY-----"""
+
+
+def _c_multiline_string_literal(s: str) -> str:
+    """
+    Turn a Python multiline string into a C string literal with explicit \\n.
+    Produces something like:
+        "line1\n"
+        "line2\n"
+    """
+    lines = s.strip("\n").splitlines()
+    return "\n".join(f"\"{line}\\n\"" for line in lines) + "\n"
+
+
 @dataclass
 class Permission:
     """Represents a permission for one group
@@ -96,6 +120,18 @@ def secrets_to_c_header(
         f.write("static const uint8_t HSM_PIN_HASH[32] = {\n    ")
         f.write(", ".join(f"0x{b:02x}" for b in h))
         f.write("\n};\n\n")
+
+        # Example ECC keypair (P-256)
+        f.write("// TESTING ONLY: Example ECC keypair (P-256). Replace for real deployment.\n")
+        f.write("static const char ECC_PUBLIC_KEY_PEM[] =\n")
+        f.write(_c_multiline_string_literal(ECC_PUBLIC_KEY_PEM))
+        f.write(";\n\n")
+
+        f.write("static const char ECC_PRIVATE_KEY_PEM[] =\n")
+        f.write(_c_multiline_string_literal(ECC_PRIVATE_KEY_PEM))
+        f.write(";\n\n")
+
+
         f.write("const static group_permission_t global_permissions[MAX_PERMS] = {\n")
         for i, perm in enumerate(permissions):
             f.write(

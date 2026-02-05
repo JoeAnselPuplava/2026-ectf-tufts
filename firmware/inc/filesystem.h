@@ -121,6 +121,14 @@ bool is_slot_in_use(slot_t slot);
 */
 int create_file(file_t *dest, group_id_t group_id, char *name, uint16_t contents_len, uint8_t *contents);
 
+int create_file_encrypted(
+    file_t* dest,
+    group_id_t group_id,
+    char* name,
+    uint16_t contents_len,
+    uint8_t* contents_plain
+);
+
 /** @brief Create a new file object in memory
  *
  *  @param slot The slot to write the file to
