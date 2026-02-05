@@ -55,6 +55,8 @@ typedef enum {
 
 #define MSG_HEADER_SIZE sizeof(msg_header_t)
 
+int read_bytes(int uart_id, void *buf, uint16_t len);
+
 int write_bytes(int uart_id, const void *buf, uint16_t len, bool should_ack);
 
 /** @brief Write len bytes to UART in hex. 2 bytes will be printed for every byte.
