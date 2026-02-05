@@ -90,6 +90,13 @@ int read_ack(int uart_id) {
  *  @return MSG_OK on success, else other msg_status_t
 */
 int write_bytes(int uart_id, const void *buf, uint16_t len, bool should_ack) {
+    if (buf == NULL) {
+        return MSG_BAD_PTR;
+    }
+    if (len < 0 || len > MAX_FILE_SIZE) {
+        return MSG_BAD_LEN;
+    }
+
     for (int i = 0; i < len; i++) {
         if (i % 256 == 0 && i != 0) {  // Expect an ACK after sending every 256 bytes
             if (should_ack && (read_ack(uart_id) != MSG_OK)) {
@@ -124,11 +131,14 @@ int write_packet(int uart_id, msg_type_t type, const void *buf, uint16_t len) {
     hdr.cmd = type;
     hdr.len = len;
 
-    result = write_bytes(uart_id, &hdr, MSG_HEADER_SIZE, false);
-
+    if (buf == NULL) {
+        return MSG_BAD_PTR;
+    }
     if (len < 0 || len > MAX_FILE_SIZE) {
         return MSG_BAD_LEN;
     }
+
+    result = write_bytes(uart_id, &hdr, MSG_HEADER_SIZE, false);
 
     // ACKs don't need a response
     if (type == ACK_MSG) {
@@ -157,7 +167,7 @@ int write_packet(int uart_id, msg_type_t type, const void *buf, uint16_t len) {
  *  @param uart_id The id of the uart where the message is to be sent
  *  @param cmd A pointer to the resulting opcode of the packet. Must not be null.
  *  @param buf A pointer to a buffer to store the incoming packet. Can be null.
- *  @param len A pointer to the resulting length of the packet. Can be null.
+ *  @param len A pointer to the max length of the packet. Can be null.
  *
  *  @return MSG_OK on success, else other msg_status_t
 */
@@ -174,7 +184,7 @@ int read_packet(int uart_id, msg_type_t* cmd, void *buf, uint16_t *len) {
     *cmd = header.cmd;
 
     if (len != NULL) {
-        if (*len && header.len > *len) {
+        if (*len && (header.len > *len)) {
             *len = 0;
             return MSG_BAD_LEN;
         }
