@@ -196,7 +196,8 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     // request the file from the neighboring device
     write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, (void *)&request, sizeof(receive_request_t));
 
-    len_recv_msg = MAX_FILE_SIZE;
+    // set essentially no limit to the receive message size
+    len_recv_msg = 0xffff;
 
     // recieve the response message
     read_packet(TRANSFER_INTERFACE, &cmd, &recv_resp, &len_recv_msg);
