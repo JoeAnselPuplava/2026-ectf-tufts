@@ -4,8 +4,6 @@ import re
 import subprocess
 from loguru import logger 
 
-from loguru import logger
-
 # initailized variables 
 UART_PORT = "/dev/tty.usbmodemM43210051"
 SECRETS_PATH = "global.secrets"
@@ -13,9 +11,16 @@ PIN = "123abc"
 ERROR_PIN = "111111"
 
 VERBOSE = False 
+ITERATIONS = 100 
 
-#   size requirements 
-#   num testing iterations 
+# timing requirments (ms)
+TIME_DEVICE_WAKE = 1000
+TIME_LIST = 500
+TIME_READ = 3000
+TIME_WRITE = 3000
+TIME_REC = 3000
+TIME_INT = 1000
+TIME_PIN_ERROR = 5000
 
 
 # random data generation - TBD 

@@ -74,6 +74,10 @@ def main():
 
     pin_error_list_files()
 
+    time_success_list_files() 
+
+    time_pin_error_list_files()
+
 
 if __name__ == "__main__":
     main()

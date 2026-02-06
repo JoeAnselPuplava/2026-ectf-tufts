@@ -2,14 +2,18 @@
 import test_common
 
 import time
+from loguru import logger 
 
 def list_files(val_pin): 
     cmd = "list"
     return test_common.host_call(cmd, val_pin)
 
-# check that list is successful 
+# list operation with valid pin where no files are present 
+# needs to be updated to support multiple files 
 def success_list_files(suppress_output=False):
+    process_time = time.perf_counter()
     res = list_files(True)
+    process_time = time.perf_counter() - process_time
 
     logs = res.stdout
     msg = (
@@ -24,6 +28,12 @@ def success_list_files(suppress_output=False):
         "success_list_files"
     )
 
+    if not suppress_output:
+        logger.success(f"success_list_files - passed")
+
+    return process_time 
+
+# list operation with invalid pin 
 def pin_error_list_files(suppress_output=False):
     res = list_files(False)
 
@@ -46,7 +56,28 @@ def pin_error_list_files(suppress_output=False):
         "pin_error_list_files"
     )
 
-    
+    if not suppress_output:
+        logger.success(f"pin_error_list_files - passed")
 
 
-# check that time constraints followed 
+
+# check time constraints on list operation 
+def time_success_list_files(): 
+    for _ in range(test_common.ITERATIONS):
+        time = success_list_files(suppress_output=True)
+        time_taken = (time) * 1000
+        assert time_taken < test_common.TIME_LIST, (
+            f"Time for List Operation exceeded {test_common.TIME_LIST}ms: got {time_taken}ms."
+        )
+
+    logger.success(f"Timing requirement for `List Operation` - passed")
+
+def time_pin_error_list_files(): 
+    for _ in range(test_common.ITERATIONS):
+        time = pin_error_list_files(suppress_output=True)
+        time_taken = (time) * 1000
+        assert time_taken < test_common.TIME_PIN_ERROR, (
+            f"Time for List Operation exceeded {test_common.TIME_PIN_ERROR}ms: got {time_taken}ms."
+        )
+
+    logger.success(f"Timing requirement for `List Operation` - passed")
