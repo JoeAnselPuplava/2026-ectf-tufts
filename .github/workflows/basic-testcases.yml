@@ -1,9 +1,9 @@
 name: Basic Tests
-on: [push]
-  # pull_request:
-  # push:
-    # branches:
-    # - release
+on:
+  pull_request:
+  push:
+    branches:
+    - release
 
 jobs:
   testcases_check:
@@ -12,11 +12,14 @@ jobs:
     timeout-minutes: 10
     steps:
     - uses: actions/checkout@v4
-    - name: setup
+    - name: installbuild
       run: |
-        
-    - name: flash
+        docker build -t build-hsm ./firmware
+        docker run --rm -v ./firmware:/hsm -v ./global.secrets:/secrets/global.secrets:ro -v ./build:/out -e HSM_PIN='123abc' -e PERMISSIONS='1234=R--:4321=RWC' build-hsm
+    - name: flashstart
       run: |
-        
+        uvx ectf hw /dev/tty.usbmodemM43210051 erase
+        uvx ectf hw /dev/tty.usbmodemM43210051 flash ./build/hsm.bin -n hsm
+        uvx ectf hw /dev/tty.usbmodemM43210051 start
     - name: runtest
-      run: 
+      run: python3 scripts/tests/test_main.py --port /dev/tty.usbmodemM43210051

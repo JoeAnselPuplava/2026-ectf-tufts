@@ -13,8 +13,8 @@ def success_list_files(suppress_output=False):
 
     logs = res.stdout
     msg = (
-        r"Got DEBUG message: b'Boot Reference Flag: ectf\{boot_e2218e27c4d4255d\}\\n'\n"
         r"Got DEBUG message: b'Checking PIN\\n'\n"
+        r"Got DEBUG message: b'PIN OK\\n'\n"
         r"List successful"
     )
 
