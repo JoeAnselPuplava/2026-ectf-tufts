@@ -72,6 +72,8 @@ def main():
 
     success_list_files()
 
+    pin_error_list_files()
+
 
 if __name__ == "__main__":
     main()

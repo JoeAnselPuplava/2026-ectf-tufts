@@ -14,12 +14,12 @@ jobs:
     - uses: actions/checkout@v4
     - name: installbuild
       run: |
-        docker build -t build-hsm ./firmware
-        docker run --rm -v ./firmware:/hsm -v ./global.secrets:/secrets/global.secrets:ro -v ./build:/out -e HSM_PIN='123abc' -e PERMISSIONS='1234=R--:4321=RWC' build-hsm
+        .venv/bin/python -m docker build -t build-hsm ./firmware
+        .venv/bin/python -m docker run --rm -v ./firmware:/hsm -v ./global.secrets:/secrets/global.secrets:ro -v ./build:/out -e HSM_PIN='123abc' -e PERMISSIONS='1234=R--:4321=RWC' build-hsm
     - name: flashstart
       run: |
-        uvx ectf hw /dev/tty.usbmodemM43210051 erase
-        uvx ectf hw /dev/tty.usbmodemM43210051 flash ./build/hsm.bin -n hsm
-        uvx ectf hw /dev/tty.usbmodemM43210051 start
+        .venv/bin/python -m uvx ectf hw /dev/tty.usbmodemM43210051 erase
+        .venv/bin/python -m uvx ectf hw /dev/tty.usbmodemM43210051 flash ./build/hsm.bin -n hsm
+        .venv/bin/python -m uvx ectf hw /dev/tty.usbmodemM43210051 start
     - name: runtest
-      run: python3 scripts/tests/test_main.py --port /dev/tty.usbmodemM43210051
+      run: .venv/bin/python -u scripts/tests/test_main.py --port /dev/tty.usbmodemM43210051

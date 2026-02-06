@@ -10,11 +10,13 @@ from loguru import logger
 UART_PORT = "/dev/tty.usbmodemM43210051"
 SECRETS_PATH = "global.secrets"
 PIN = "123abc"
+ERROR_PIN = "111111"
 
 VERBOSE = False 
 
 #   size requirements 
 #   num testing iterations 
+
 
 # random data generation - TBD 
 
@@ -32,14 +34,18 @@ def check_result(pattern, in_str, out_str):
         raise Exception(f"test {out_str} failed")
 
 # run actual command call 
-def host_call(cmd): 
-    # potentially add virtual environment 
+def host_call(cmd, val_pin): 
+    if val_pin: 
+        pin = PIN
+    else: 
+        pin = ERROR_PIN
+
     command = ["uvx",
                "ectf",
                "tools", 
                UART_PORT, 
                cmd, 
-               PIN]
+               pin]
 
     if VERBOSE:
         logger.info(command)
