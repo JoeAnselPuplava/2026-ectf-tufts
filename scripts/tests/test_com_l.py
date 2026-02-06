@@ -6,7 +6,8 @@ from loguru import logger
 
 def list_files(val_pin): 
     cmd = "list"
-    return test_common.host_call(cmd, val_pin)
+    args = ""
+    return test_common.host_call(cmd, val_pin, args)
 
 # list operation with valid pin where no files are present 
 # needs to be updated to support multiple files 

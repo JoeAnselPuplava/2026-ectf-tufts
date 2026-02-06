@@ -39,7 +39,7 @@ def check_result(pattern, in_str, out_str):
         raise Exception(f"test {out_str} failed")
 
 # run actual command call 
-def host_call(cmd, val_pin): 
+def host_call(cmd, val_pin, args): 
     if val_pin: 
         pin = PIN
     else: 
@@ -50,7 +50,8 @@ def host_call(cmd, val_pin):
                "tools", 
                UART_PORT, 
                cmd, 
-               pin]
+               pin, 
+               args]
 
     if VERBOSE:
         logger.info(command)
@@ -68,4 +69,26 @@ def host_call(cmd, val_pin):
 
     return res
 
+def host_call_pinless(cmd, args): 
+    command = ["uvx",
+               "ectf",
+               "tools", 
+               UART_PORT, 
+               cmd,  
+               args]
 
+    if VERBOSE:
+        logger.info(command)
+
+    env = os.environ
+    env["LOGURU_COLORIZE"] = "NO"
+    
+    res = subprocess.run(command, 
+                         capture_output=True, 
+                         text=True, 
+                         env=env)
+
+    if VERBOSE:
+        logger.info(res)
+
+    return res
