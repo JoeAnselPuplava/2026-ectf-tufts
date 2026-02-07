@@ -146,7 +146,7 @@ int main(void) {
         STATUS_LED_ON();
 
         pkt_len = 0;
-        result = read_packet(CONTROL_INTERFACE, &cmd, uart_buf, &pkt_len);
+        result = read_packet(CONTROL_INTERFACE, &cmd, uart_buf, &pkt_len, sizeof(uart_buf));
 
         if (result != MSG_OK) {
             STATUS_LED_OFF();

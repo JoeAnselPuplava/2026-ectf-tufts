@@ -19,11 +19,12 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "complicated_uart.h"
+#include "commands.h"
 
 #define CMD_TYPE_LEN sizeof(char)
 #define CMD_LEN_LEN sizeof(uint16_t)
 #define MSG_MAGIC '%'       // '%' - 0x25
-#define MAX_FILE_SIZE 8192
+#define MAX_FILE_SIZE MAX_MSG_SIZE
 
 typedef enum {
     LIST_MSG = 'L',         // 'L' - 0x4c
@@ -86,11 +87,11 @@ int write_packet(int uart_id, msg_type_t type, const void *buf, uint16_t len);
  *  @param uart_id The id of the uart where the message is to be sent
  *  @param cmd A pointer to the resulting opcode of the packet. Must not be null.
  *  @param buf A pointer to a buffer to store the incoming packet. Can be null.
- *  @param len A pointer to the resulting length of the packet. Can be null.
+ *  @param buf_size A pointer to the resulting length of the packet. Can be null.
  *
  *  @return 0 on success, a negative number on failure
 */
-int read_packet(int uart_id, msg_type_t* cmd, void *buf, uint16_t *len);
+int read_packet(int uart_id, msg_type_t* cmd, void *buf, uint16_t *buf_size, uint16_t max_len);
 
 // Macro definitions to print the specified format for error messages
 #define print_error(msg) write_packet(CONTROL_INTERFACE, ERROR_MSG, msg, strlen(msg))

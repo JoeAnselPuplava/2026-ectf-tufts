@@ -193,10 +193,10 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     // request the file from the neighboring device
     write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, (void *)&request, sizeof(receive_request_t));
 
-    len_recv_msg = MAX_FILE_SIZE;
+    len_recv_msg = 0;
 
     // recieve the response message
-    read_packet(TRANSFER_INTERFACE, &cmd, &recv_resp, &len_recv_msg);
+    read_packet(TRANSFER_INTERFACE, &cmd, &recv_resp, &len_recv_msg, sizeof(recv_resp));
     if (cmd != RECEIVE_MSG) {
         print_error("Opcode mismatch");
         return -1;
@@ -236,10 +236,10 @@ int interrogate(uint16_t pkt_len, uint8_t *buf) {
     write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, NULL, 0);
 
     // set essentially no limit to the receive message size
-    len_recv_msg = 0xffff;
+    len_recv_msg = 0;
 
     // recieve the response message
-    read_packet(TRANSFER_INTERFACE, &cmd, &final_list_buf, &len_recv_msg);
+    read_packet(TRANSFER_INTERFACE, &cmd, &final_list_buf, &len_recv_msg, sizeof(final_list_buf));
     if (cmd != INTERROGATE_MSG) {
         print_error("Opcode mismatch");
         return -1;
@@ -268,7 +268,7 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
 
     // Receive a packet from a neighboring hsm
     memset(uart_buf, 0, sizeof(uart_buf));
-    read_packet(TRANSFER_INTERFACE, &cmd, uart_buf, &read_length);
+    read_packet(TRANSFER_INTERFACE, &cmd, uart_buf, &read_length, sizeof(uart_buf));
 
     switch (cmd) {
         case INTERROGATE_MSG:

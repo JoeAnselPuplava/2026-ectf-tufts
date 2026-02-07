@@ -148,15 +148,17 @@ int write_packet(int uart_id, msg_type_t type, const void *buf, uint16_t len) {
  *  @param uart_id The id of the uart where the message is to be sent
  *  @param cmd A pointer to the resulting opcode of the packet. Must not be null.
  *  @param buf A pointer to a buffer to store the incoming packet. Can be null.
- *  @param len A pointer to the max length of the packet. Can be null.
+ *  @param buf_size A pointer to store the actual length read. Can be null.
+ *  @param max_len The maximum capacity of the buffer 'buf'.
  *
  *  @return MSG_OK on success, else other msg_status_t
 */
-int read_packet(int uart_id, msg_type_t* cmd, void *buf, uint16_t *len) {
+int read_packet(int uart_id, msg_type_t* cmd, void *buf, uint16_t *buf_size, uint16_t max_len) {
     msg_header_t header = {0};
 
-    // cmd must be a valid pointer
-    if (cmd == NULL) {
+    // cmd must be a valid pointer. 
+    // If a buffer is provided, we must have a way to return the length or it's logically risky.
+    if (cmd == NULL || (buf != NULL && buf_size == NULL)) {
         return MSG_BAD_PTR;
     }
 
@@ -164,28 +166,28 @@ int read_packet(int uart_id, msg_type_t* cmd, void *buf, uint16_t *len) {
 
     *cmd = header.cmd;
 
-    if (header.len > MAX_FILE_SIZE) {
+    // 2. Check against the provided buffer capacity (Buffer Overflow Protection)
+    if (header.len > max_len && buf != NULL) {
+        if (buf_size != NULL) {
+            *buf_size = 0;
+        }
         return MSG_BAD_LEN;
     }
-
-    if (len != NULL) {
-        if (*len && (header.len > *len)) {
-            *len = 0;
-            return MSG_BAD_LEN;
-        }
-
-        *len = header.len;
+    // Update buf_size with the actual length we are about to read
+    if (buf_size != NULL) {
+        *buf_size = header.len;
     }
 
     if (header.cmd != ACK_MSG) {
         write_ack(uart_id);  // ACK the header
-        if (header.len && buf != NULL) {
+
+        if (header.len > 0 && buf != NULL) {
+            // This is now safe because we verified header.len <= max_len
             if (read_bytes(uart_id, buf, header.len) != MSG_OK) {
                 return MSG_NO_ACK;
             }
-        }
-        if (header.len) {
-            if (write_ack(uart_id) != MSG_OK) { // ACK the final block (not handled by read_bytes)
+            // ACK the final block (read_bytes only ACKs every 256 bytes)
+            if (write_ack(uart_id) != MSG_OK) { 
                 return MSG_NO_ACK;
             }
         }
