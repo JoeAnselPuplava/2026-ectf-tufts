@@ -1,15 +1,17 @@
-# tests for listen command 
+# tests for listen command
 import test_common
 
 import time
-from loguru import logger 
+from loguru import logger
 
-def listen(): 
+
+def listen():
     cmd = "listen"
     return test_common.host_call(cmd, val_pin)
 
-# list operation with valid pin where no files are present 
-# needs to be updated to support multiple files 
+
+# list operation with valid pin where no files are present
+# needs to be updated to support multiple files
 def success_list_files(suppress_output=False):
     process_time = time.perf_counter()
     res = list_files(True)
@@ -22,18 +24,15 @@ def success_list_files(suppress_output=False):
         r"List successful"
     )
 
-    test_common.check_result(
-        msg, 
-        logs, 
-        "success_list_files"
-    )
+    test_common.check_result(msg, logs, "success_list_files")
 
     if not suppress_output:
         logger.success(f"success_list_files - passed")
 
-    return process_time 
+    return process_time
 
-# list operation with invalid pin 
+
+# list operation with invalid pin
 def pin_error_list_files(suppress_output=False):
     res = list_files(False)
 
@@ -50,19 +49,14 @@ def pin_error_list_files(suppress_output=False):
         r"HSM failed with error: Message\(opcode=<Opcode\.ERROR: 69>, body=b'Invalid pin'\)"
     )
 
-    test_common.check_result(
-        msg, 
-        logs, 
-        "pin_error_list_files"
-    )
+    test_common.check_result(msg, logs, "pin_error_list_files")
 
     if not suppress_output:
         logger.success(f"pin_error_list_files - passed")
 
 
-
-# check time constraints on list operation 
-def time_success_list_files(): 
+# check time constraints on list operation
+def time_success_list_files():
     for _ in range(test_common.ITERATIONS):
         time = success_list_files(suppress_output=True)
         time_taken = (time) * 1000
@@ -72,7 +66,8 @@ def time_success_list_files():
 
     logger.success(f"Timing requirement for `List Operation` - passed")
 
-def time_pin_error_list_files(): 
+
+def time_pin_error_list_files():
     for _ in range(test_common.ITERATIONS):
         time = pin_error_list_files(suppress_output=True)
         time_taken = (time) * 1000

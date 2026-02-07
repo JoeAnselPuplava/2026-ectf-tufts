@@ -1,17 +1,17 @@
-# var initialization and shared testing functions 
-import os 
+# var initialization and shared testing functions
+import os
 import re
 import subprocess
-from loguru import logger 
+from loguru import logger
 
-# initailized variables 
+# initailized variables
 UART_PORT = "/dev/tty.usbmodemM43210051"
 SECRETS_PATH = "global.secrets"
 PIN = "123abc"
 ERROR_PIN = "111111"
 
-VERBOSE = False 
-ITERATIONS = 100 
+VERBOSE = False
+ITERATIONS = 100
 
 # timing requirments (ms)
 TIME_DEVICE_WAKE = 1000
@@ -23,11 +23,12 @@ TIME_INT = 1000
 TIME_PIN_ERROR = 5000
 
 
-# random data generation - TBD 
+# random data generation - TBD
 
-# clean up 
+# clean up
 
-# check test result output 
+
+# check test result output
 def check_result(pattern, in_str, out_str):
     matched = re.search(pattern, in_str)
     if not matched:
@@ -38,55 +39,40 @@ def check_result(pattern, in_str, out_str):
         print(repr(in_str))
         raise Exception(f"test {out_str} failed")
 
-# run actual command call 
-def host_call(cmd, val_pin, args): 
-    if val_pin: 
+
+# run actual command call
+def host_call(cmd, val_pin, args):
+    if val_pin:
         pin = PIN
-    else: 
+    else:
         pin = ERROR_PIN
 
-    command = ["uvx",
-               "ectf",
-               "tools", 
-               UART_PORT, 
-               cmd, 
-               pin, 
-               args]
+    command = ["uvx", "ectf", "tools", UART_PORT, cmd, pin, args]
 
     if VERBOSE:
         logger.info(command)
 
     env = os.environ
     env["LOGURU_COLORIZE"] = "NO"
-    
-    res = subprocess.run(command, 
-                         capture_output=True, 
-                         text=True, 
-                         env=env)
+
+    res = subprocess.run(command, capture_output=True, text=True, env=env)
 
     if VERBOSE:
         logger.info(res)
 
     return res
 
-def host_call_pinless(cmd, args): 
-    command = ["uvx",
-               "ectf",
-               "tools", 
-               UART_PORT, 
-               cmd,  
-               args]
+
+def host_call_pinless(cmd, args):
+    command = ["uvx", "ectf", "tools", UART_PORT, cmd, args]
 
     if VERBOSE:
         logger.info(command)
 
     env = os.environ
     env["LOGURU_COLORIZE"] = "NO"
-    
-    res = subprocess.run(command, 
-                         capture_output=True, 
-                         text=True, 
-                         env=env)
+
+    res = subprocess.run(command, capture_output=True, text=True, env=env)
 
     if VERBOSE:
         logger.info(res)
