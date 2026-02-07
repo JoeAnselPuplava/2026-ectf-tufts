@@ -73,6 +73,7 @@ int list(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
+    print_debug("In list function\n");
     // write success packet with list
     pkt_len_t length = LIST_PKT_LEN(file_list.n_files);
     write_packet(CONTROL_INTERFACE, LIST_MSG, &file_list, length);

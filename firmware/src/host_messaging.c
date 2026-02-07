@@ -115,7 +115,7 @@ int write_packet(int uart_id, msg_type_t type, const void *buf, uint16_t len) {
     hdr.cmd = type;
     hdr.len = len;
 
-    if (len > MAX_FILE_SIZE) {
+    if (len > MAX_MSG_SIZE) {
         return MSG_BAD_LEN;
     }
 
