@@ -1,52 +1,46 @@
 # tests for listen command
 import test_common
 
-
 import time
+import os
+import subprocess
 from loguru import logger
 
-
 def listen():
-   cmd = "uvx ectf tools listen"
+    cmd = "uvx ectf tools listen"
 
+    if test_common.VERBOSE:
+        logger.info(cmd)
 
-   if VERBOSE:
-       logger.info(cmd)
+    env = os.environ
+    env["LOGURU_COLORIZE"] = "NO"
 
-
-   env = os.environ
-   env["LOGURU_COLORIZE"] = "NO"
-  
-   res = subprocess.run(cmd,
-                        timeout=1
+    res = subprocess.run(cmd,
+                        timeout=1,
                         capture_output=True,
                         text=True,
                         env=env)
-  
-   if VERBOSE:
-       logger.info(res)
 
+    if test_common.VERBOSE:
+        logger.info(res)
 
-   return res
+    return res
 
 
 #
 def success_listen(suppress_output=False):
-   res = listen()
+    res = listen()
 
+    logs = res.stdout
+    msg = ""
 
-   logs = res.stdout
-   msg = ""
+    test_common.check_result(
+        msg,
+        logs,
+        "success_listen"
+    )
 
-
-   test_common.check_result(
-       msg,
-       logs,
-       "success_listen"
-   )
-
-
-   if not suppress_output:
-       logger.success(f"success_listen - passed")
+    if not suppress_output:
+        logger.success(f"success_listen - passed")
 
 
