@@ -22,4 +22,4 @@ jobs:
         .venv/bin/python -m uvx ectf hw /dev/tty.usbmodemM43210051 flash ./build/hsm.bin -n hsm
         .venv/bin/python -m uvx ectf hw /dev/tty.usbmodemM43210051 start
     - name: runtest
-      run: .venv/bin/python -u scripts/tests/test_main.py --port /dev/tty.usbmodemM43210051
+      run: .venv/bin/python -u scripts/tests/test_main.py --port1 /dev/tty.usbmodemM43210051 --port2 /dev/tty.usbmodemM43210054

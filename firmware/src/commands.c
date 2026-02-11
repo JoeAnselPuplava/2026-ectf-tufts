@@ -96,6 +96,8 @@ int read(uint16_t pkt_len, uint8_t *buf) {
     file_t curr_file;
 
     if (!check_pin(command->pin)) {
+        wrong_pin_lockout_init();
+        pin_lockout();
         print_error("Invalid pin");
         return -1;
     }
@@ -136,6 +138,8 @@ int write(uint16_t pkt_len, uint8_t *buf) {
     file_t curr_file;
 
     if (!check_pin(command->pin)) {
+        wrong_pin_lockout_init();
+        pin_lockout();
         print_error("Invalid pin");
         return -1;
     }
@@ -181,6 +185,8 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     int ret;
 
     if (!check_pin(command->pin)) {
+        wrong_pin_lockout_init();
+        pin_lockout();
         print_error("Invalid pin");
         return -1;
     }
@@ -232,6 +238,8 @@ int interrogate(uint16_t pkt_len, uint8_t *buf) {
 
     // pin check
     if (!check_pin(command->pin)) {
+        wrong_pin_lockout_init();
+        pin_lockout();
         print_error("Invalid pin");
         return -1;
     }
