@@ -97,7 +97,10 @@ WOLFCRYPT_SOURCES=(
     # --- Add these for ECC ---
     ecc.c
     tfm.c       # Fast math library required for ECC
-    # random.c    # Required for key generation and signing
+    random.c    # Required for key generation and signing
+    hmac.c      # Required for HKDF
+    wolfmath.c
+    memory.c
 )
 
 CFLAGS+=(
@@ -144,9 +147,9 @@ function build() {
     echo "Compiling sources..."
 
     OBJECTS=()
-    cat src/random.c
-    echo "These are permissions"
-    echo $PERMISSIONS
+    # # cat src/random.c
+    # echo "These are permissions"
+    # echo $PERMISSIONS
     python3 secrets_to_c_header.py "/secrets$GLOBAL_SECRETS" $HSM_PIN "$PERMISSIONS"
     # mkdir -p "$BUILDDIR/wolfcrypt"
     # echo "==========="
