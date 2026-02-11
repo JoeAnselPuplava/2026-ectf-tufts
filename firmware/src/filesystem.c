@@ -83,6 +83,10 @@ int create_file(
 int write_file(slot_t slot, file_t *src, uint8_t *uuid) {
     unsigned int length, flash_addr;
 
+    if (slot < 0 || slot >= MAX_FILE_COUNT) {
+        return -1;
+    }
+
     flash_addr = FILE_START_PAGE_FROM_SLOT(slot);
     length = FILE_TOTAL_SIZE(src->contents_len);
     // Update the FAT for the new file
@@ -110,6 +114,10 @@ int write_file(slot_t slot, file_t *src, uint8_t *uuid) {
 int read_file(slot_t slot, file_t *dest) {
     int flash_addr, file_size;
 
+    if (slot < 0 || slot >= MAX_FILE_COUNT) {
+        return -1;
+    }
+    
     flash_addr = FILE_ALLOCATION_TABLE[slot].flash_addr;
     file_size = FILE_ALLOCATION_TABLE[slot].length;
     if (flash_addr < 0 || file_size < 0) {
