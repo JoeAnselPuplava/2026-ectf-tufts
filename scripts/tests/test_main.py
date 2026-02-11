@@ -10,8 +10,10 @@
 #
 ###########################################################
 
-
+from test_common import *
 from test_com_l import *
+from test_com_r import * 
+from test_com_w import * 
 from test_com_n import *
 
 import argparse
@@ -20,7 +22,7 @@ import time
 
 # reset board to prevent error
 def reset_board():
-    if test_common.VERBOSE:
+    if VERBOSE:
         os.system(  # probably need new commands
             "openocd -f interface/cmsis-dap.cfg -f target/max78000.cfg -c 'init; reset; exit;'"
         )
@@ -42,12 +44,20 @@ def parse_args():
 
     # add arguments
     parser.add_argument(
-        "--port",
+        "--port1",
         "-p",
         type=str,
         required=True,
-        default=test_common.UART_PORT,
+        default=UART_PORT,
         help="Specify the serial port of the board",
+    )
+    parser.add_argument(
+        "--port2",
+        "-s",
+        type=str,
+        required=True,
+        default=SCND_PORT,
+        help="Specify the second serial port of the board",
     )
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Print logs for debugging"
@@ -58,7 +68,8 @@ def parse_args():
 
 def main():
     args = parse_args()
-    test_common.UART_PORT = args.port
+    UART_PORT = args.port1
+    SCND_PORT = args.port2
 
     if args.verbose:
         test_common.VERBOSE = True
@@ -67,7 +78,7 @@ def main():
     delete_test_files()
 
     # start calling tests
-    if test_common.VERBOSE:
+    if VERBOSE:
         logger.info("Start testing - list")
 
     success_list_files()
@@ -76,7 +87,28 @@ def main():
     # time_success_list_files()
     # time_pin_error_list_files()
 
-    if test_common.VERBOSE:
+    if VERBOSE:
+        logger.info("Start testing - read")
+
+    # success_read_files()
+    # test_slot_boundaries() # may be unnessassary test 
+    pin_error_read_files()
+    empty_error_read_files()
+    # permission_error_read_files()
+    # time_success_read_files()
+    # time_pin_error_read_files()
+
+    if VERBOSE:
+        logger.info("Start testing - write")
+
+    # success_write_files()
+    # success_overwrite_files()
+    pin_error_write_files()
+    permission_error_write_files()
+    # time_success_write_files()
+    # time_pin_error_write_files()
+
+    if VERBOSE:
         logger.info("Start testing - listen")
 
     #listen tests 
