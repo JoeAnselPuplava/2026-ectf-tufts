@@ -16,7 +16,7 @@ from pathlib import Path
 
 from loguru import logger
 
-import secrets 
+import secrets
 from py_ecc.bls.ciphersuites import G2ProofOfPossession
 
 
@@ -35,12 +35,12 @@ def gen_secrets(groups: list[int]) -> bytes:
 
     :returns: Contents of the secrets file
     """
-    
+
     # Create the secrets dictionary
     glob_sec = {}
 
     for group in groups:
-        # Generate Keys 
+        # Generate Keys
         encode_seed = secrets.token_bytes(32)
         verify_seed = secrets.token_bytes(32)
 
@@ -49,8 +49,8 @@ def gen_secrets(groups: list[int]) -> bytes:
         verify_key = G2ProofOfPossession.KeyGen(verify_seed)
         check_key = G2ProofOfPossession.SkToPk(verify_key).hex()
 
-        # Add groups and secrets 
-        glob_sec.update({group : [read_key, write_key, verify_key, check_key]})
+        # Add groups and secrets
+        glob_sec.update({group: [read_key, write_key, verify_key, check_key]})
 
     # NOTE: if you choose to use JSON for your file type, you will not
     # be able to store binary data, and must either use a different file
@@ -60,8 +60,7 @@ def gen_secrets(groups: list[int]) -> bytes:
 
 
 def parse_args():
-    """Define and parse the command line arguments
-    """
+    """Define and parse the command line arguments"""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--force",

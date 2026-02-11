@@ -1,0 +1,25 @@
+name: Basic Tests
+on:
+  pull_request:
+  push:
+    branches:
+    - release
+
+jobs:
+  testcases_check:
+    name: testcases check
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@v4
+    - name: installbuild
+      run: |
+        .venv/bin/python -m docker build -t build-hsm ./firmware
+        .venv/bin/python -m docker run --rm -v ./firmware:/hsm -v ./global.secrets:/secrets/global.secrets:ro -v ./build:/out -e HSM_PIN='123abc' -e PERMISSIONS='1234=R--:4321=RWC' build-hsm
+    - name: flashstart
+      run: |
+        .venv/bin/python -m uvx ectf hw /dev/tty.usbmodemM43210051 erase
+        .venv/bin/python -m uvx ectf hw /dev/tty.usbmodemM43210051 flash ./build/hsm.bin -n hsm
+        .venv/bin/python -m uvx ectf hw /dev/tty.usbmodemM43210051 start
+    - name: runtest
+      run: .venv/bin/python -u scripts/tests/test_main.py --port1 /dev/tty.usbmodemM43210051 --port2 /dev/tty.usbmodemM43210054
