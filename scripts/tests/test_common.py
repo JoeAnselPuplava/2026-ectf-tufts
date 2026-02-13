@@ -10,9 +10,10 @@ from loguru import logger
 UART_PORT = "/dev/tty.usbmodemM43210051"
 SCND_PORT = "/dev/tty.usbmodemM43210054"
 SECRETS_PATH = "global.secrets"
+FILE = "./bigfile.txt"
 PIN = "123abc"
 ERROR_PIN = "111111"
-GROUP = "1"
+GROUP = "0x4321"
 ERROR_GROUP = "1234"
 
 # Reusable regex to ignore any lines starting with 'Got DEBUG message'
@@ -41,6 +42,18 @@ def check_result(pattern, in_str, out_str):
         print("Inside of string:")
         print(repr(in_str))
         raise Exception(f"test {out_str} failed")
+
+# clean up old test files
+def delete_test_files():
+    cmd = ["rm", FILE]
+
+    if VERBOSE:
+        logger.info(cmd)
+
+    env = os.environ
+    env["LOGURU_COLORIZE"] = "NO"
+
+    subprocess.run(cmd, env=env)
 
 # run actual command call
 def host_call(cmd, val_pin, args):
@@ -94,21 +107,25 @@ def listen(prim_port):
                             env=env,
                             preexec_fn=os.setsid)
 
-    time.sleep(5)
-    os.killpg(proc.pid, signal.SIGINT)
+    # time.sleep(5)
+    # os.killpg(proc.pid, signal.SIGINT)
 
     res, err = proc.communicate()
 
     if VERBOSE:
         logger.info(res)
 
-    return [res, err]
+    return [proc, res, err]
+
+def kill_listen(proc): 
+    os.killpg(proc.pid, signal.SIGINT)
 
 # timer test
 def timer_test(test_fun, com_time, com_name):
     for _ in range(ITERATIONS):
         time = test_fun(suppress_output=True)
         time_taken = (time) * 1000
+        # print(time_taken)
         assert time_taken < com_time, (
             f"Time for {com_name} Operation exceeded {com_time}ms: got {time_taken}ms."
         )

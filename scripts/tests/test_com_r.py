@@ -11,6 +11,7 @@ def read_files_w_slot(val_pin, slot):
 
 # read operation with valid pin where file is present
 def success_read_files(suppress_output=False):
+    delete_test_files()
     process_time = time.perf_counter()
     # Defaulting to slot 0 for general read tests
     res = read_files_w_slot(True, ["0", "./"])

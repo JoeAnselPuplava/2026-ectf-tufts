@@ -28,10 +28,11 @@ def success_interrogate_files(suppress_output=False):
 
 # interrogate operation with invalid pin
 def pin_error_interrogate_files(suppress_output=False):
-    listen(False)
+    proc = listen(False)
     process_time = time.perf_counter()
     res = interrogate_files(False)
     process_time = time.perf_counter() - process_time
+    kill_listen(proc[0])
 
     logs = res.stdout
     msg = (

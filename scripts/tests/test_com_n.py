@@ -7,9 +7,11 @@ from loguru import logger
 # check that listen works properly, i.e. spits no errors 
 def success_listen(suppress_output=False):
     res = listen(True)
+    time.sleep(5)
+    kill_listen(res[0])
 
-    logs = res[0]
-    errs = res[1]
+    logs = res[1]
+    errs = res[2]
     msg = ""
 
     check_result(

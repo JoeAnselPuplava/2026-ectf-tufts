@@ -6,7 +6,7 @@ from loguru import logger
 
 def write_files(val_pin, slot, perm):
     cmd = "write"
-    args = [slot, perm, "./helloworld.txt"]
+    args = [slot, perm, FILE]
     return host_call(cmd, val_pin, args)
 
 # successful write operation on slot 0 with test file 
@@ -79,7 +79,7 @@ def permission_error_write_files(suppress_output=False):
 
 # check time constraints on list operation
 def time_success_write_files():
-    timer_test(success_write_files, WRITE_LIST, "Write")
+    timer_test(success_write_files, TIME_WRITE, "Write")
 
 def time_pin_error_write_files():
     timer_test(pin_error_write_files, TIME_PIN_ERROR, "Write")
