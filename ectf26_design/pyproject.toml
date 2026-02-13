@@ -15,8 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-secrets = "gen_secrets:main"
-
+secrets = "ectf26_design.gen_secrets:main"
 
 [tool.black]
 include = '\.pyi?$'
