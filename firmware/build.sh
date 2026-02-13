@@ -8,47 +8,7 @@ cd "$(dirname "$0")"
 #########################
 
 BUILD_DIR=/out
-DOCKER_IMAGE=build-hsm
 GLOBAL_SECRETS=/global.secrets
-
-##########################
-# Enter docker container #
-##########################
-
-# if [[ -z "${IN_CONTAINER:-}" ]]; then
-#     echo 'entering docker container'
-
-#     cd .. # at root of code repo
-#     # mkdir -p "$BUILD_DIR"
-#     echo "ARGS: $@"
-#     # bear --version
-#             #   -v ./wolfssl_patch/src/random.c:opt/wolfssl/wolfcrypt/src/random.c:ro \
-#     if docker run \
-#               --rm \
-#               -v ./firmware:/hsm \
-#               -v ."$GLOBAL_SECRETS":/secrets"$GLOBAL_SECRETS":ro \
-#               -v ./build:/out \
-#               -e HSM_PIN="$HSM_PIN" \
-#               -e PERMISSIONS="$PERMISSIONS" \
-#               -e IN_CONTAINER=1 \
-#               "$DOCKER_IMAGE" \
-#             #   bear \
-#             #        --output "${BUILD_DIR}/compile_commands_tmp.json" \
-#             #        -- \
-#             #        ./build.sh "$@"
-#     then
-#         # Only save compile commands if we actually built anything
-#         case "${1:-build}" in
-#             build|all|'')
-#                 sed "s#/hsm#$PWD/firmware#g" \
-#                     "./firmware/$BUILD_DIR/compile_commands_tmp.json" \
-#                     > "./firmware/$BUILD_DIR/compile_commands.json"
-#                 ;;
-#         esac
-#     fi
-
-#     exit 0
-# fi
 
 #####################
 # Toolchain & paths #
@@ -97,7 +57,7 @@ WOLFCRYPT_SOURCES=(
     # --- Add these for ECC ---
     ecc.c
     tfm.c       # Fast math library required for ECC
-    random.c    # Required for key generation and signing
+    # random.c    # Required for key generation and signing
     hmac.c      # Required for HKDF
     wolfmath.c
     memory.c
