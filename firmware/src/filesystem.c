@@ -220,16 +220,11 @@ int create_file(
     ret = mspm0_trng_seed(iv, sizeof(iv));
     if (ret != 0) return ret;
 
-    char dbg[32];
-    sprintf(dbg, "AES key: %lu", (unsigned long)sizeof(aes_key));
+    char dbg[80];
+    snprintf(dbg, sizeof(dbg), "k0=%08lx k1=%08lx",
+            (unsigned long)(*(uint32_t*)&aes_key[0]),
+            (unsigned long)(*(uint32_t*)&aes_key[4]));
     print_debug(dbg);
-    sprintf(dbg, "IV: %lu", (unsigned long)sizeof(iv));
-    print_debug(dbg);
-    sprintf(dbg, "AES key: %lu", (unsigned long)aes_key[0]);
-    print_debug(dbg);
-    sprintf(dbg, "IV: %lu", (unsigned long)iv[0]);
-    print_debug(dbg);
-
 
     print_debug("AES key and IV generated successfully");
 

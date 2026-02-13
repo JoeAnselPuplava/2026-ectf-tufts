@@ -1,41 +1,47 @@
+#include <ti/driverlib/dl_trng.h>
 #include "random.h"
 
-/**
- * wc_GenerateSeed() for MSPM0L2228
- * Fills the output buffer with hardware entropy from the TRNG peripheral.
- */
+#define TRNG_TIMEOUT 500000u
+
+static int trng_inited = 0;
+
+static int trng_init_once(void)
+{
+    if (trng_inited) return 0;
+    DL_TRNG_sendCommand(TRNG, DL_TRNG_CMD_NORM_FUNC);
+    trng_inited = 1;
+    return 0;
+}
+
+static int trng_wait_capture_ready(void)
+{
+    for (volatile uint32_t t = 0; t < TRNG_TIMEOUT; t++) {
+        if (DL_TRNG_isCaptureReady(TRNG)) return 0;
+    }
+    return -5;
+}
+
 int mspm0_trng_seed(byte* output, word32 sz)
 {
-// int wc_GenerateSeed(byte* output, word32 sz) // Change from 3 args to 2
-// {
+    if (!output) return -1;
 
-    if (output == NULL) {
-        return -1;
-    }
-
-    /* 1. Reset and Enable the TRNG Peripheral */
-    /* Note: In a full application, you usually call DL_TRNG_init() in your
-       system initialization code (ti_msp_dl_config.c). */
-    DL_TRNG_reset(TRNG);
-    DL_TRNG_enablePower(TRNG);
-    
-    /* Optional: Configure TRNG for your specific needs. 
-       Default settings are usually sufficient for eCTF. */
+    trng_init_once();
 
     word32 generated = 0;
     while (generated < sz) {
-        /* 2. Command the TRNG to capture new entropy */
-        DL_TRNG_sendCommand(TRNG, DL_TRNG_CMD_TEST_ANA);
+        int ret = trng_wait_capture_ready();
+        if (ret != 0) return ret;
 
-        /* 3. Wait for the hardware to finish the capture */
-        while (DL_TRNG_getCurrentState(TRNG) & DL_TRNG_STATE_OFF);
+        uint32_t w = DL_TRNG_getCapture(TRNG);
 
-        /* 4. Retrieve the random data (TRNG returns a 32-bit word) */
-        uint32_t randomWord = DL_TRNG_getCapture(TRNG);
+        // IMPORTANT: replace this mask with the correct one from your SDK
+        DL_TRNG_clearInterruptStatus(TRNG, DL_TRNG_INTERRUPT_CAPTURE_RDY_EVENT);
 
-        /* 5. Copy bytes into the output buffer */
+
+
+
         for (int i = 0; i < 4 && generated < sz; i++) {
-            output[generated++] = (byte)((randomWord >> (i * 8)) & 0xFF);
+            output[generated++] = (byte)((w >> (8*i)) & 0xFF);
         }
     }
 
