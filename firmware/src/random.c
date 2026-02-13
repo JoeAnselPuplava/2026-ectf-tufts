@@ -1,14 +1,11 @@
-#include <ti/driverlib/dl_trng.h>
-#include <wolfssl/wolfcrypt/types.h>
-#include <wolfssl/wolfcrypt/random.h>
+#include "random.h"
 
 /**
  * wc_GenerateSeed() for MSPM0L2228
  * Fills the output buffer with hardware entropy from the TRNG peripheral.
  */
-int wc_GenerateSeed(OS_Seed* os, byte* output, word32 sz)
+int mspm0_trng_seed(byte* output, word32 sz)
 {
-    (void)os;
 // int wc_GenerateSeed(byte* output, word32 sz) // Change from 3 args to 2
 // {
 

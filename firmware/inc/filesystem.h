@@ -15,7 +15,14 @@
 #define __FILESYSTEM__
 
 #include <stdbool.h>
+#include <stdint.h>
+#include <string.h>
 #include "simple_flash.h"
+// #include "wolfssl/wolfcrypt/rsa.h"
+// #include "wolfssl/wolfcrypt/random.h"
+// #include "wolfssl/wolfcrypt/sha256.h"
+// #include "wolfssl/wolfcrypt/aes.h"
+
 
 // #include "commands.h"
 
@@ -105,6 +112,9 @@ typedef struct {
 */
 int init_fs();
 
+// Utilities
+void secure_zero(void* v, size_t n);
+
 /** @brief Check whether a file is in use
  *
  *  @param slot The slot to check
@@ -119,14 +129,44 @@ bool is_slot_in_use(slot_t slot);
  *
  * @return 0 upon success. A negative value otherwise.
 */
-int create_file(file_t *dest, group_id_t group_id, char *name, uint16_t contents_len, uint8_t *contents);
+// int create_file(file_t *dest, group_id_t group_id, char *name, uint16_t contents_len, uint8_t *contents);
 
-int create_file_encrypted(
-    file_t* dest,
+/** @brief Create a new encrypted file object in memory
+ *
+ *  Uses RSA-OAEP + AES-CTR encryption
+ *
+ * @param dest           Destination file structure
+ * @param group_id       Group ID for access control
+ * @param name           Filename
+ * @param contents_len   Length of plaintext
+ * @param contents_plain Plaintext data
+ *
+ * @return 0 upon success. A negative value otherwise.
+*/
+int create_file(
+    file_t *dest,
     group_id_t group_id,
-    char* name,
+    char *name,
     uint16_t contents_len,
-    uint8_t* contents_plain
+    uint8_t *contents_plain
+);
+
+/** @brief Decrypt file contents
+ *
+ * @param src            Source encrypted file
+ * @param group_id       Group ID (for future AAD binding)
+ * @param name           Filename (for future AAD binding)
+ * @param out_plain      Output buffer for plaintext
+ * @param out_plain_len  Input: buffer size, Output: actual plaintext length
+ *
+ * @return 0 upon success. A negative value otherwise.
+*/
+int decrypt_file_contents(
+    const file_t* src,
+    group_id_t group_id,
+    const char* name,
+    uint8_t* out_plain,
+    uint16_t* out_plain_len
 );
 
 /** @brief Create a new file object in memory

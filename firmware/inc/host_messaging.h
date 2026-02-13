@@ -20,6 +20,7 @@
 #include <stdbool.h>
 #include "simple_uart.h"
 
+
 #define CMD_TYPE_LEN sizeof(char)
 #define CMD_LEN_LEN sizeof(uint16_t)
 #define MSG_MAGIC '%'       // '%' - 0x25

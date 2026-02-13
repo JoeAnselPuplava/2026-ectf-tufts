@@ -91,6 +91,8 @@ int list(uint16_t pkt_len, uint8_t *buf) {
  * @return 0 upon success. A negative value on error.
 */
 int read(uint16_t pkt_len, uint8_t *buf) {
+    (void)pkt_len;
+
     read_command_t *command = (read_command_t*)buf;
     read_response_t file_info;
     file_t curr_file;
@@ -102,27 +104,55 @@ int read(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
-    // zeroizing memory is a pretty good practice
-    memset(&file_info, 0, sizeof(read_response_t));
+    memset(&file_info, 0, sizeof(file_info));
+    memset(&curr_file, 0, sizeof(curr_file));
 
     if (read_file(command->slot, &curr_file) < 0) {
         print_error("Failed to read file");
         return -1;
     }
-    // copy structure of the persistent file
-    memcpy(file_info.name, &curr_file.name, strlen(curr_file.name));
-    memcpy(file_info.contents, &curr_file.contents, curr_file.contents_len);
 
     if (!validate_permission(curr_file.group_id, PERM_READ)) {
         print_error("Invalid permission");
         return -1;
     }
 
-    // write a success message with the file information
-    pkt_len_t length = MAX_NAME_SIZE + curr_file.contents_len;
+    // Copy name (bounded)
+    // If curr_file.name may not be null-terminated, force termination.
+    memcpy(file_info.name, curr_file.name, MAX_NAME_SIZE);
+    file_info.name[MAX_NAME_SIZE - 1] = '\0';
+
+    // Decrypt contents into response buffer
+    uint16_t plain_len = sizeof(file_info.contents);
+
+    int ret = decrypt_file_contents(
+        &curr_file,
+        curr_file.group_id,
+        (const char*)curr_file.name,
+        (uint8_t*)file_info.contents,
+        &plain_len
+    );
+    if (ret != 0) {
+        print_error("Decrypt failed");
+        return -1;
+    }
+    print_debug("Decrypt successful");
+    char dbg[32];
+    sprintf(dbg, "Plain length: %lu", (unsigned long)plain_len);
+    print_debug(dbg);
+
+    // Send plaintext length
+    pkt_len_t length = MAX_NAME_SIZE + plain_len;
     write_packet(CONTROL_INTERFACE, READ_MSG, &file_info, length);
+    print_debug("Sent read message");
+
+    // optional: zeroize sensitive buffers
+    secure_zero(&curr_file, sizeof(curr_file));
+    print_debug("Zeroed curr_file");
+    // file_info is sent; don’t zeroize it before write_packet
     return 0;
 }
+
 
 
 /** @brief Perform the write operation

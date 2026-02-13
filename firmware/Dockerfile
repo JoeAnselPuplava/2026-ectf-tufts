@@ -14,6 +14,8 @@ WORKDIR /root
 # do this first because it takes the longest
 RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     python3 \
+    python3-pip \
+    python3-venv \
     make \
     wget \
     build-essential \
@@ -21,6 +23,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     git \
     clang-format-19 \
     bear
+
+RUN pip3 install --break-system-packages cryptography
 
 ENV MSPM0_SDK_INSTALL_DIR=/opt/mspm0-sdk-mspm0_sdk_2_06_00_05
 ENV TICLANG_ARMCOMPILER=/opt/ti-cgt-armllvm_4.0.3.LTS

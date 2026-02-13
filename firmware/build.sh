@@ -88,17 +88,20 @@ WOLFSSL_DIR=/opt/wolfssl
 WOLFCRYPT_SRC="$WOLFSSL_DIR/wolfcrypt/src"
 
 WOLFCRYPT_SOURCES=(
-    aes.c
     hash.c
     md5.c
     cryptocb.c
     sha.c
     sha256.c
     # --- Add these for ECC ---
+    asn.c       
     ecc.c
+    # coding.c 
+    aes.c
+    rsa.c
     tfm.c       # Fast math library required for ECC
     random.c    # Required for key generation and signing
-    hmac.c      # Required for HKDF
+    # hmac.c      # Required for HKDF
     wolfmath.c
     memory.c
 )
@@ -115,6 +118,7 @@ CFLAGS+=(
     -DWOLFSSL_USER_IO          # Allows you to define custom I/O if needed
     -DWC_NO_DEFAULT_DEVID      # Standard for embedded targets
     "-I/opt/wolfssl"           # Ensure the internal headers are reachable
+    -DWOLFSSL_AES_DIRECT
     -DCUSTOM_RAND_GENERATE_SEED_OS=wc_GenerateSeed
     # -DCUSTOM_RAND_GENERATE_SEED=wc_GenerateSeed
 )

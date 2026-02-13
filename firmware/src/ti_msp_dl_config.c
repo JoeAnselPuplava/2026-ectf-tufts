@@ -60,12 +60,15 @@ SYSCONFIG_WEAK void SYSCFG_DL_initPower(void)
     DL_GPIO_reset(GPIOB);
     DL_UART_Main_reset(UART_0_INST);
     DL_UART_Main_reset(UART_1_INST);
+    DL_TRNG_reset(TRNG);          // ✅ reset TRNG here
 
     DL_GPIO_enablePower(GPIOA);
     DL_GPIO_enablePower(GPIOB);
     DL_UART_Main_enablePower(UART_0_INST);
     DL_UART_Main_enablePower(UART_1_INST);
-    delay_cycles(POWER_STARTUP_DELAY);
+    DL_TRNG_enablePower(TRNG);    // ✅ enable TRNG power here
+
+    delay_cycles(POWER_STARTUP_DELAY);  // delay covers all peripherals including TRNG
 }
 
 SYSCONFIG_WEAK void SYSCFG_DL_GPIO_init(void)
