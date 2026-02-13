@@ -11,6 +11,7 @@ requires-python = ">=3.12"
 dependencies = [
     "loguru",
     "py_ecc",
+    "py-ecc",
 ]
 
 [project.scripts]
