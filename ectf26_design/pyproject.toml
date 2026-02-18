@@ -10,8 +10,8 @@ requires-python = ">=3.12"
 # TODO: add your custom dependencies to this list
 dependencies = [
     "loguru",
-    "py_ecc",
-    "py-ecc",
+    "cryptography",
+    "cryptography",
 ]
 
 [project.scripts]
