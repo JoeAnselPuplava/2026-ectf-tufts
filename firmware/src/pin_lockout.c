@@ -9,7 +9,7 @@ extern uint32_t app2_end;
 uint32_t *app2_flash_addr = (uint32_t *)&app2_start;
 
 #define LOCKOUT_TIME_PERIODS 5  // 4 seconds
-#define LOCKOUT_PERIOD_DURATION 5000000  // ~1 second at 32MHz
+#define LOCKOUT_PERIOD_DURATION 2500000  // ~1 second at 32MHz
 
 void pin_lockout(void){
     char debug_msg[64];

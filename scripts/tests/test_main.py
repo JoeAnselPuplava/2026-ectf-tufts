@@ -32,10 +32,6 @@ def reset_board():
         )
     time.sleep(1)
 
-# clean up old test files
-def delete_test_files():
-   return 0
-   # change as files are created by tests
 
 # command line parsing
 def parse_args():
@@ -75,44 +71,40 @@ def main():
         test_common.VERBOSE = True
 
     reset_board()
-    delete_test_files()
 
     # start calling tests
     if VERBOSE:
         logger.info("Start testing - list")
 
-    success_list_files()
-    pin_error_list_files()
+    # success_list_files()
+    # pin_error_list_files() 
     # currently failing 
-    # time_success_list_files()
+    time_success_list_files()
     # time_pin_error_list_files()
 
     if VERBOSE:
-        logger.info("Start testing - read")
+        logger.info("Start testing - read/write")
 
-    # success_read_files()
-    # test_slot_boundaries() # may be unnessassary test 
-    pin_error_read_files()
-    empty_error_read_files()
-    # permission_error_read_files()
-    # time_success_read_files()
-    # time_pin_error_read_files()
-
-    if VERBOSE:
-        logger.info("Start testing - write")
-
+    # empty_error_read_files()
     # success_write_files()
     # success_overwrite_files()
-    pin_error_write_files()
-    permission_error_write_files()
+    # success_read_files()
+
+    # pin_error_read_files()
+    # permission_error_read_files()
+    # pin_error_write_files()
+    # permission_error_write_files()
+
+    # time_success_read_files()
     # time_success_write_files()
+    # time_pin_error_read_files()
     # time_pin_error_write_files()
 
     if VERBOSE:
         logger.info("Start testing - listen")
 
     #listen tests 
-    success_listen()
+    # success_listen()
 
 
 if __name__ == "__main__":

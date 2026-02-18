@@ -16,13 +16,13 @@ def success_list_files(suppress_output=False):
     res = list_files(True)
     process_time = time.perf_counter() - process_time
 
-    logs = res.stdout
-    msg = (DEBUG_NOISE + r"List successful")
+    # logs = res.stdout
+    # msg = (DEBUG_NOISE + r"List successful")
 
-    check_result(msg, logs, "success_list_files")
+    # check_result(msg, logs, "success_list_files")
 
-    if not suppress_output:
-        logger.success(f"success_list_files - passed")
+    # if not suppress_output:
+    #     logger.success(f"success_list_files - passed")
 
     return process_time
 

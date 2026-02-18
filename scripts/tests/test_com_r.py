@@ -11,6 +11,7 @@ def read_files_w_slot(val_pin, slot):
 
 # read operation with valid pin where file is present
 def success_read_files(suppress_output=False):
+    delete_test_files()
     process_time = time.perf_counter()
     # Defaulting to slot 0 for general read tests
     res = read_files_w_slot(True, ["0", "./"])
@@ -122,7 +123,7 @@ def time_pin_error_read_files():
         start = time.perf_counter()
         pin_error_read_files(suppress_output=True)
         time_taken = (time.perf_counter() - start) * 1000
-
+        print(time_taken)
         assert time_taken < TIME_PIN_ERROR, (
             f"Time for Read Operation exceeded {TIME_PIN_ERROR}ms: got {time_taken}ms."
         )
