@@ -40,31 +40,28 @@ def gen_secrets(groups: list[int]) -> bytes:
     glob_sec = {}
 
     for group in groups:
+        # Generate Seeds
+        e_seed = secrets.token_bytes(32)
+        v_seed = secrets.token_bytes(32)
+
         # Generate Keys
-        # e_seed = secrets.token_bytes(32)
-        # v_seed = secrets.token_bytes(32)
+        r_key = G2ProofOfPossession.KeyGen(e_seed)
+        w_key = G2ProofOfPossession.SkToPk(r_key)
+        v_key = G2ProofOfPossession.KeyGen(v_seed)
+        c_key = G2ProofOfPossession.SkToPk(v_key)
 
-        # r_key = G2ProofOfPossession.KeyGen(e_seed)
-        # w_key = G2ProofOfPossession.SkToPk(r_key)
-        # v_key = G2ProofOfPossession.KeyGen(v_seed)
-        # c_key = G2ProofOfPossession.SkToPk(v_key)
+        # Reformate Keys for the json dump 
+        read_key = bytes(r_key).hex()
+        write_key = bytes(w_key).hex()
+        verify_key = bytes(v_key).hex()
+        check_key = bytes(c_key).hex()
 
-        # read_key = bytes(r_key).hex()
-        # write_key = bytes(w_key).hex()
-        # verify_key = bytes(v_key).hex()
-        # check_key = bytes(c_key).hex()
-
-        read_key = "read"
-        write_key = "write"
-        verify_key = "verify"
-        check_key = "check"
-
-    #     # Add groups and secrets
+        # Add groups and keys to dictionary 
         glob_sec[group] = {
-            "read_sk": read_key,
-            "write_pk": write_key,
-            "verify_sk": verify_key,
-            "check_pk": check_key,
+            "read_key": read_key,
+            "write_key": write_key,
+            "verify_key": verify_key,
+            "check_key": check_key,
         }
 
     return json.dumps(glob_sec).encode()
