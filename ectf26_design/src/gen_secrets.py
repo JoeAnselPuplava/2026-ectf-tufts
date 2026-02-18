@@ -39,18 +39,18 @@ def gen_secrets(groups: list[int]) -> bytes:
     # Create the secrets dictionary
     glob_sec = {}
 
-    for group in groups:
-        # Generate Keys
-        encode_seed = secrets.token_bytes(32)
-        verify_seed = secrets.token_bytes(32)
+    # for group in groups:
+    #     # Generate Keys
+    #     encode_seed = secrets.token_bytes(32)
+    #     verify_seed = secrets.token_bytes(32)
 
-        read_key = G2ProofOfPossession.KeyGen(encode_seed)
-        write_key = G2ProofOfPossession.SkToPk(read_key).hex()
-        verify_key = G2ProofOfPossession.KeyGen(verify_seed)
-        check_key = G2ProofOfPossession.SkToPk(verify_key).hex()
+    #     read_key = G2ProofOfPossession.KeyGen(encode_seed)
+    #     write_key = G2ProofOfPossession.SkToPk(read_key).hex()
+    #     verify_key = G2ProofOfPossession.KeyGen(verify_seed)
+    #     check_key = G2ProofOfPossession.SkToPk(verify_key).hex()
 
-        # Add groups and secrets
-        glob_sec.update({group: [read_key, write_key, verify_key, check_key]})
+    #     # Add groups and secrets
+    #     glob_sec.update({group: [read_key, write_key, verify_key, check_key]})
 
     # NOTE: if you choose to use JSON for your file type, you will not
     # be able to store binary data, and must either use a different file
