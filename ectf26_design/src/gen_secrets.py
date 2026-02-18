@@ -41,18 +41,18 @@ def gen_secrets(groups: list[int]) -> bytes:
 
     for group in groups:
         # Generate Keys
-        encode_seed = secrets.token_bytes(32)
-        verify_seed = secrets.token_bytes(32)
+        # e_seed = secrets.token_bytes(32)
+        # v_seed = secrets.token_bytes(32)
 
-        # read_key = str(G2ProofOfPossession.KeyGen(encode_seed))
-        # write_key = str(G2ProofOfPossession.SkToPk(read_key).hex())
-        # verify_key = str(G2ProofOfPossession.KeyGen(verify_seed))
-        # check_key = str(G2ProofOfPossession.SkToPk(verify_key).hex())
+        # r_key = G2ProofOfPossession.KeyGen(e_seed)
+        # w_key = G2ProofOfPossession.SkToPk(r_key)
+        # v_key = G2ProofOfPossession.KeyGen(v_seed)
+        # c_key = G2ProofOfPossession.SkToPk(v_key)
 
-        r_key = G2ProofOfPossession.KeyGen(encode_seed)
-        w_key = G2ProofOfPossession.SkToPk(read_key).hex()
-        v_key = G2ProofOfPossession.KeyGen(verify_seed)
-        c_key = G2ProofOfPossession.SkToPk(verify_key).hex()
+        # read_key = bytes(r_key).hex()
+        # write_key = bytes(w_key).hex()
+        # verify_key = bytes(v_key).hex()
+        # check_key = bytes(c_key).hex()
 
         read_key = "read"
         write_key = "write"
@@ -60,12 +60,13 @@ def gen_secrets(groups: list[int]) -> bytes:
         check_key = "check"
 
     #     # Add groups and secrets
-        glob_sec.update({group: [read_key, write_key, verify_key, check_key]})
+        glob_sec[group] = {
+            "read_sk": read_key,
+            "write_pk": write_key,
+            "verify_sk": verify_key,
+            "check_pk": check_key,
+        }
 
-    # NOTE: if you choose to use JSON for your file type, you will not
-    # be able to store binary data, and must either use a different file
-    # type or encode the binary data to hex, base64, or another type of
-    # ASCII-only encoding
     return json.dumps(glob_sec).encode()
 
 
