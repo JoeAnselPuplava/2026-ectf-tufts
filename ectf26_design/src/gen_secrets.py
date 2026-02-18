@@ -36,10 +36,14 @@ def gen_secrets(groups: list[int]) -> bytes:
     :returns: Contents of the secrets file
     """
 
+    # Things to try 
+        # fix whatever is wrong with key generation
+        # fix whatever is wrong with the encoding 
+
     # Create the secrets dictionary
     glob_sec = {}
 
-    # for group in groups:
+    for group in groups:
     #     # Generate Keys
     #     encode_seed = secrets.token_bytes(32)
     #     verify_seed = secrets.token_bytes(32)
@@ -49,8 +53,13 @@ def gen_secrets(groups: list[int]) -> bytes:
     #     verify_key = G2ProofOfPossession.KeyGen(verify_seed)
     #     check_key = G2ProofOfPossession.SkToPk(verify_key).hex()
 
+        read_key = "read"
+        write_key = "write"
+        verify_key = "verify"
+        check_key = "check"
+
     #     # Add groups and secrets
-    #     glob_sec.update({group: [read_key, write_key, verify_key, check_key]})
+        glob_sec.update({group: [read_key, write_key, verify_key, check_key]})
 
     # NOTE: if you choose to use JSON for your file type, you will not
     # be able to store binary data, and must either use a different file
