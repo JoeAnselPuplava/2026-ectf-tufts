@@ -50,11 +50,11 @@ def gen_secrets(groups: list[int]) -> bytes:
         v_key = G2ProofOfPossession.KeyGen(v_seed)
         c_key = G2ProofOfPossession.SkToPk(v_key)
 
-        # # Reformate Keys for the json dump 
-        # read_ke = r_key.serialize().hex()
-        # write_ke = w_key.serialize().hex()
-        # verify_ke = v_key.serialize().hex()
-        # check_ke = c_key.serialize().hex()
+        # Reformate Keys for the json dump 
+        read_ke = r_key.hex()
+        write_ke = w_key.hex()
+        verify_ke = v_key.hex()
+        check_ke = c_key.hex()
 
         read_key = "1"
         write_key = "1"
