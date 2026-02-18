@@ -63,15 +63,19 @@ def gen_secrets(groups: list[int]) -> bytes:
             format=serialization.PublicFormat.CompressedPoint
         )
 
-        # Add groups and secrets (Converted to Hex Strings)
-        glob_sec.update({
-            group: [
-                read_key_bytes.hex(), 
-                write_key_bytes.hex(), 
-                verify_key_bytes.hex(), 
-                check_key_bytes.hex()
-            ]
-        })
+        # Convert everything to strings to appease the API
+        read_key = read_key_bytes.hex(), 
+        write_key = write_key_bytes.hex(), 
+        verify_key = verify_key_bytes.hex(), 
+        check_key = check_key_bytes.hex()
+
+        # Add groups and secrets 
+        glob_sec[group] = {
+            "read_key": read_key,
+            "write_key": write_key,
+            "verify_key": verify_key,
+            "check_key": check_key,
+        }
 
     # NOTE: if you choose to use JSON for your file type, you will not
     # be able to store binary data, and must either use a different file
