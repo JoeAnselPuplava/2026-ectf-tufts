@@ -50,11 +50,6 @@ def gen_secrets(groups: list[int]) -> bytes:
         v_key = G2ProofOfPossession.KeyGen(v_seed)
         c_key = G2ProofOfPossession.SkToPk(v_key)
 
-        # read_key = "1"
-        # write_key = "1"
-        # verify_key = "1"
-        # check_key = "1"
-
         read_key = str(r_key)
         write_key = str(w_key)
         verify_key = str(v_key)
