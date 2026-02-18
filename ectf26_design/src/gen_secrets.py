@@ -20,6 +20,45 @@ import secrets
 from py_ecc.bls.ciphersuites import G2ProofOfPossession
 
 
+# def gen_secrets(groups: list[int]) -> bytes:
+#     """Generate the contents secrets file
+
+#     This will be passed to the Encoder, ectf26_design.gen_secrets,
+#     and the build process of the firmware
+
+#     NOTE: you should NOT write to secrets files within this function.
+#     All generated secrets must be contained in the returned bytes
+#     object.
+
+#     :param groups: List of permission groups that will be valid in this
+#         deployment.
+
+#     :returns: Contents of the secrets file
+#     """
+
+#     # Create the secrets dictionary
+#     glob_sec = {}
+
+#     for group in groups:
+#         # Generate Keys
+#         encode_seed = secrets.token_bytes(32)
+#         verify_seed = secrets.token_bytes(32)
+
+#         read_key = G2ProofOfPossession.KeyGen(encode_seed)
+#         write_key = G2ProofOfPossession.SkToPk(read_key).hex()
+#         verify_key = G2ProofOfPossession.KeyGen(verify_seed)
+#         check_key = G2ProofOfPossession.SkToPk(verify_key).hex()
+
+#         # Add groups and secrets
+#         glob_sec.update({group: [read_key, write_key, verify_key, check_key]})
+
+#     # NOTE: if you choose to use JSON for your file type, you will not
+#     # be able to store binary data, and must either use a different file
+#     # type or encode the binary data to hex, base64, or another type of
+#     # ASCII-only encoding
+#     return json.dumps(glob_sec).encode()
+
+
 def gen_secrets(groups: list[int]) -> bytes:
     """Generate the contents secrets file
 
@@ -35,28 +74,22 @@ def gen_secrets(groups: list[int]) -> bytes:
 
     :returns: Contents of the secrets file
     """
+    # TODO: Update this function to generate any system-wide secrets needed by
+    #   your design
 
-    # Create the secrets dictionary
-    glob_sec = {}
-
-    for group in groups:
-        # Generate Keys
-        encode_seed = secrets.token_bytes(32)
-        verify_seed = secrets.token_bytes(32)
-
-        read_key = G2ProofOfPossession.KeyGen(encode_seed)
-        write_key = G2ProofOfPossession.SkToPk(read_key).hex()
-        verify_key = G2ProofOfPossession.KeyGen(verify_seed)
-        check_key = G2ProofOfPossession.SkToPk(verify_key).hex()
-
-        # Add groups and secrets
-        glob_sec.update({group: [read_key, write_key, verify_key, check_key]})
+    # Create the secrets object
+    # You can change this to generate any secret material
+    # The secrets file will never be shared with attackers
+    secrets = {
+        "groups": groups,
+        "some_secrets": "EXAMPLE",
+    }
 
     # NOTE: if you choose to use JSON for your file type, you will not
     # be able to store binary data, and must either use a different file
     # type or encode the binary data to hex, base64, or another type of
     # ASCII-only encoding
-    return json.dumps(glob_sec).encode()
+    return json.dumps(secrets).encode()
 
 
 def parse_args():
