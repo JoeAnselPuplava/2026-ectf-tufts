@@ -17,7 +17,6 @@ dependencies = [
 [project.scripts]
 secrets = "gen_secrets:main"
 
-
 [tool.black]
 include = '\.pyi?$'
 exclude = '''
