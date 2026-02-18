@@ -44,10 +44,20 @@ def gen_secrets(groups: list[int]) -> bytes:
         encode_seed = secrets.token_bytes(32)
         verify_seed = secrets.token_bytes(32)
 
-        read_key = str(G2ProofOfPossession.KeyGen(encode_seed))
-        write_key = str(G2ProofOfPossession.SkToPk(read_key).hex())
-        verify_key = str(G2ProofOfPossession.KeyGen(verify_seed))
-        check_key = str(G2ProofOfPossession.SkToPk(verify_key).hex())
+        # read_key = str(G2ProofOfPossession.KeyGen(encode_seed))
+        # write_key = str(G2ProofOfPossession.SkToPk(read_key).hex())
+        # verify_key = str(G2ProofOfPossession.KeyGen(verify_seed))
+        # check_key = str(G2ProofOfPossession.SkToPk(verify_key).hex())
+
+        r_key = G2ProofOfPossession.KeyGen(encode_seed)
+        w_key = G2ProofOfPossession.SkToPk(read_key).hex()
+        v_key = G2ProofOfPossession.KeyGen(verify_seed)
+        c_key = G2ProofOfPossession.SkToPk(verify_key).hex()
+
+        read_key = "read"
+        write_key = "write"
+        verify_key = "verify"
+        check_key = "check"
 
     #     # Add groups and secrets
         glob_sec.update({group: [read_key, write_key, verify_key, check_key]})
