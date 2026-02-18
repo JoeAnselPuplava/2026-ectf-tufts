@@ -41,20 +41,20 @@ def gen_secrets(groups: list[int]) -> bytes:
 
     for group in groups:
         # Generate Seeds
-        # e_seed = secrets.token_bytes(32)
-        # v_seed = secrets.token_bytes(32)
+        e_seed = secrets.token_bytes(32)
+        v_seed = secrets.token_bytes(32)
 
-        # # Generate Keys
-        # r_key = G2ProofOfPossession.KeyGen(e_seed)
-        # w_key = G2ProofOfPossession.SkToPk(r_key)
-        # v_key = G2ProofOfPossession.KeyGen(v_seed)
-        # c_key = G2ProofOfPossession.SkToPk(v_key)
+        # Generate Keys
+        r_key = G2ProofOfPossession.KeyGen(e_seed)
+        w_key = G2ProofOfPossession.SkToPk(r_key)
+        v_key = G2ProofOfPossession.KeyGen(v_seed)
+        c_key = G2ProofOfPossession.SkToPk(v_key)
 
-        # # Reformate Keys for the json dump 
-        # read_ke = bytes(r_key).hex()
-        # write_ke = bytes(w_key).hex()
-        # verify_ke = bytes(v_key).hex()
-        # check_ke = bytes(c_key).hex()
+        # Reformate Keys for the json dump 
+        read_ke = r_key.serialize().hex()
+        write_ke = w_key.serialize().hex()
+        verify_ke = v_key.serialize().hex()
+        check_ke = c_key.serialize().hex()
 
         read_key = "1"
         write_key = "1"
