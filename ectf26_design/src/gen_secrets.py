@@ -64,10 +64,10 @@ def gen_secrets(groups: list[int]) -> bytes:
         )
 
         # Convert everything to strings to appease the API
-        read_key = read_key_bytes.hex()
-        write_key = write_key_bytes.hex()
-        verify_key = verify_key_bytes.hex()
-        check_key = check_key_bytes.hex()
+        read_key = str(read_key_bytes.hex())
+        write_key = str(write_key_bytes.hex())
+        verify_key = str(verify_key_bytes.hex())
+        check_key = str(check_key_bytes.hex())
 
         # Add groups and secrets 
         glob_sec[group] = {
