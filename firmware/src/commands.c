@@ -17,6 +17,8 @@
 #include "security.h"
 #include "pin_lockout.h"
 
+#define LISTEN_MAX_ATTEMPTS 4
+
 /* IMPORTANT COMPONENTS FROM HSM.c */
 // extern file_t hsm_status[MAX_FILE_COUNT];
 static file_t current_file;
@@ -199,20 +201,37 @@ int write(uint16_t pkt_len, uint8_t *buf) {
 }
 
 
-/** @brief Perform the receive operation
- *
- *  @param pkt_len The length of the incoming packet
- *  @param buf A pointer the incoming message buffer
- *
- * @return 0 upon success. A negative value on error.
-*/
+
+static bool has_receive_permission(group_id_t gid) {
+    for (uint8_t i = 0; i < MAX_PERMS; i++) {
+        if (global_permissions[i].group_id == gid) {
+            return global_permissions[i].receive;
+        }
+    }
+    return false;
+}
+
+static void send_abort(slot_t slot, group_id_t group, uint8_t reason) {
+    receive_abort_t a;
+    memset(&a, 0, sizeof(a));
+    a.slot = slot;
+    a.group = group;
+    a.reason = reason;
+    write_packet(TRANSFER_INTERFACE, RECEIVE_ABORT_MSG, &a, sizeof(a));
+}
+
 int receive(uint16_t pkt_len, uint8_t *buf) {
+    (void)pkt_len;
+
     receive_command_t *command = (receive_command_t *)buf;
-    receive_request_t request;
-    receive_response_t recv_resp;
+
     msg_type_t cmd;
     uint16_t len_recv_msg;
-    int ret;
+
+    receive_req_t req;
+    receive_challenge_t chal;
+    receive_chalresp_t resp;
+    receive_response_t recv_resp;
 
     if (!check_pin(command->pin)) {
         wrong_pin_lockout_init();
@@ -221,36 +240,90 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
-    // zeroize the buffers we will use
+    memset(&req, 0, sizeof(req));
+    memset(&chal, 0, sizeof(chal));
+    memset(&resp, 0, sizeof(resp));
     memset(&recv_resp, 0, sizeof(recv_resp));
-    memset(&request, 0, sizeof(request));
 
-    // prep request to neighbor
-    request.slot = command->read_slot;
-    memcpy(&request.permissions, &global_permissions, sizeof(group_permission_t) * MAX_PERMS);
+    // 1) Send slot request
+    req.slot = command->read_slot;
+    write_packet(TRANSFER_INTERFACE, RECEIVE_REQ_MSG, &req, sizeof(req));
 
-    // request the file from the neighboring device
-    write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, (void *)&request, sizeof(receive_request_t));
-
-    // set essentially no limit to the receive message size
+    // 2) Read challenge
     len_recv_msg = 0xffff;
+    read_packet(TRANSFER_INTERFACE, &cmd, &chal, &len_recv_msg);
 
-    // recieve the response message
-    read_packet(TRANSFER_INTERFACE, &cmd, &recv_resp, &len_recv_msg);
-    if (cmd != RECEIVE_MSG) {
-        print_error("Opcode mismatch");
+    if (cmd == RECEIVE_ABORT_MSG) {
+        print_error("RECEIVE: peer aborted");
+        return -1;
+    }
+    if (cmd != RECEIVE_CHAL_MSG) {
+        send_abort(command->read_slot, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
+        print_error("RECEIVE: expected challenge");
         return -1;
     }
 
-    // write that file into the file system
+    if (chal.slot != command->read_slot) {
+        send_abort(command->read_slot, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
+        print_error("RECEIVE: challenge slot mismatch");
+        return -1;
+    }
+    if (chal.group_id == (group_id_t)0xFFFF) {
+        send_abort(chal.slot, chal.group_id, RCV_ABORT_GENERIC);
+        print_error("RECEIVE: invalid slot");
+        return -1;
+    }
+
+    // 3) Local permission check
+    if (!has_receive_permission(chal.group_id)) {
+        send_abort(chal.slot, chal.group_id, RCV_ABORT_GENERIC);
+        print_error("RECEIVE: no receive permission");
+        return -1;
+    }
+
+    // 4) Build challenge response (ECC sign TODO)
+    resp.slot = chal.slot;
+    resp.group_id = chal.group_id;
+    memcpy(resp.nonce, chal.nonce, NONCE_SIZE);
+
+    // TODO: ECC SIGN HERE (later)
+    resp.sig_len = 0;
+    memset(resp.sig, 0, sizeof(resp.sig));
+
+    write_packet(TRANSFER_INTERFACE, RECEIVE_CHALRESP_MSG, &resp, sizeof(resp));
+
+    // 5) Listener sends back the file
+    len_recv_msg = 0xffff;
+    read_packet(TRANSFER_INTERFACE, &cmd, &recv_resp, &len_recv_msg);
+
+    if (cmd == RECEIVE_ABORT_MSG) {
+        print_error("RECEIVE: peer aborted");
+        return -1;
+    }
+    if (cmd != RECEIVE_MSG) {
+        send_abort(resp.slot, resp.group_id, RCV_ABORT_GENERIC);
+        print_error("RECEIVE: expected file response");
+        return -1;
+    }
+
     if (write_file(command->write_slot, &recv_resp.file, recv_resp.uuid) < 0) {
+        send_abort(resp.slot, resp.group_id, RCV_ABORT_GENERIC);
         print_error("Writing received file failed");
         return -1;
     }
-    // empty success message
+
     write_packet(CONTROL_INTERFACE, RECEIVE_MSG, NULL, 0);
     return 0;
 }
+
+
+/** @brief Perform the receive operation
+ *
+ *  @param pkt_len The length of the incoming packet
+ *  @param buf A pointer the incoming message buffer
+ *
+ * @return 0 upon success. A negative value on error.
+*/
 
 
 /** @brief Perform the interrogate operation
@@ -298,67 +371,151 @@ int interrogate(uint16_t pkt_len, uint8_t *buf) {
  * @return 0 upon success. A negative value on error.
 */
 int listen(uint16_t pkt_len, uint8_t *buf) {
-    uint8_t uart_buf[sizeof(receive_request_t)];
+    (void)pkt_len; (void)buf;
+
+    uint8_t uart_buf[256];
     msg_type_t cmd;
     pkt_len_t write_length, read_length;
+
     list_response_t file_list;
-    receive_request_t *command;
     receive_response_t recv_resp;
     const filesystem_entry_t *metadata;
 
-    read_length = sizeof(uart_buf);
+    // RECEIVE handshake state
+    bool pending_valid = false;
+    slot_t pending_slot = 0;
+    group_id_t pending_group = 0;
+    uint8_t pending_nonce[NONCE_SIZE];
 
-    // Receive a packet from a neighboring hsm
-    memset(uart_buf, 0, sizeof(uart_buf));
-    read_packet(TRANSFER_INTERFACE, &cmd, uart_buf, &read_length);
+    for (int attempts = 0; attempts < LISTEN_MAX_ATTEMPTS; attempts++) {
+        read_length = sizeof(uart_buf);
+        memset(uart_buf, 0, sizeof(uart_buf));
 
-    switch (cmd) {
-        case INTERROGATE_MSG:
-            // zeroize the buffers we will use
-            memset(&file_list, 0, sizeof(file_list));
-
-            // generate a list of files for the other device
-            generate_list_files(&file_list);
-
-            // TODO: the reference design does not implement *ANY* security
-            // you will want to add something here to comply with SR1
-
-            // send the list of files on this device
-            write_length = LIST_PKT_LEN(file_list.n_files);
-            write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, &file_list, write_length);
-            break;
-        case RECEIVE_MSG:
-            // get the request
-            command = (receive_request_t *)uart_buf;
-
-            // TODO: the reference design does not implement *ANY* security
-            // you will want to add something here to comply with SR1
-
-            // if this read fails, the other device will not receive a response and
-            // may need to be reset before further testing can occur
-            if (read_file(command->slot, &recv_resp.file) < 0) {
-                print_error("Failed to read file");
-                return -1;
-            }
-
-            metadata = get_file_metadata(command->slot);
-            if (metadata == NULL) {
-                print_error("Getting metadata failed");
-                return -1;
-            }
-
-            memcpy(&recv_resp.uuid, &metadata->uuid, UUID_SIZE);
-
-            // send the file to the neighbor hsm
-            write_length = sizeof(receive_response_t);
-            write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, &recv_resp, write_length);
-            break;
-        default:
-            print_error("Bad message type");
+        if (read_packet(TRANSFER_INTERFACE, &cmd, uart_buf, &read_length) != MSG_OK) {
+            print_error("LISTEN: read_packet failed");
+            // Try to notify peer (best-effort)
+            send_abort(pending_slot, pending_group, RCV_ABORT_GENERIC);
             return -1;
+        }
+
+        switch (cmd) {
+            case RECEIVE_ABORT_MSG: {
+                // Any abort => stop immediately
+                pending_valid = false;
+                write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
+                return 0;
+            }
+
+            case INTERROGATE_MSG: {
+                // unchanged interrogate behavior
+                memset(&file_list, 0, sizeof(file_list));
+                generate_list_files(&file_list);
+
+                write_length = LIST_PKT_LEN(file_list.n_files);
+                write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, &file_list, write_length);
+
+                write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
+                return 0;
+            }
+
+            case RECEIVE_REQ_MSG: {
+                receive_req_t *req = (receive_req_t *)uart_buf;
+                receive_challenge_t chal;
+                file_t temp;
+
+                memset(&chal, 0, sizeof(chal));
+                chal.slot = req->slot;
+
+                if (read_file(req->slot, &temp) < 0) {
+                    // Abort: invalid slot
+                    send_abort(req->slot, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
+                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
+                    return 0;
+                }
+
+                chal.group_id = temp.group_id;
+
+                // TODO: real RNG later
+                for (int i = 0; i < NONCE_SIZE; i++) {
+                    chal.nonce[i] = (uint8_t)(i * 31u + (uint8_t)(chal.group_id & 0xFFu));
+                }
+
+                pending_valid = true;
+                pending_slot = chal.slot;
+                pending_group = chal.group_id;
+                memcpy(pending_nonce, chal.nonce, NONCE_SIZE);
+
+                write_packet(TRANSFER_INTERFACE, RECEIVE_CHAL_MSG, &chal, sizeof(chal));
+                break; // wait for next transfer message
+            }
+
+            case RECEIVE_CHALRESP_MSG: {
+                receive_chalresp_t *resp = (receive_chalresp_t *)uart_buf;
+
+                if (!pending_valid) {
+                    send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
+                    print_error("RECEIVE: no pending challenge");
+                    return -1;
+                }
+
+                if (resp->slot != pending_slot || resp->group_id != pending_group) {
+                    pending_valid = false;
+                    send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
+                    print_error("RECEIVE: response mismatch");
+                    return -1;
+                }
+
+                if (memcmp(resp->nonce, pending_nonce, NONCE_SIZE) != 0) {
+                    pending_valid = false;
+                    send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
+                    print_error("RECEIVE: nonce mismatch");
+                    return -1;
+                }
+
+                // TODO: ECC VERIFY HERE (later)
+                // If verify fails: send_abort(...) and return.
+
+                pending_valid = false;
+
+                memset(&recv_resp, 0, sizeof(recv_resp));
+                if (read_file(resp->slot, &recv_resp.file) < 0) {
+                    send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
+                    print_error("Failed to read file");
+                    return -1;
+                }
+
+                if (recv_resp.file.group_id != resp->group_id) {
+                    send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
+                    print_error("RECEIVE: group mismatch");
+                    return -1;
+                }
+
+                metadata = get_file_metadata(resp->slot);
+                if (metadata == NULL) {
+                    send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
+                    print_error("Getting metadata failed");
+                    return -1;
+                }
+
+                memcpy(&recv_resp.uuid, &metadata->uuid, UUID_SIZE);
+
+                write_length = sizeof(receive_response_t);
+                write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, &recv_resp, write_length);
+
+                write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
+                return 0;
+            }
+
+            default:
+                // Unknown message: abort and stop
+                send_abort((slot_t)0xFF, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
+                print_error("Bad message type");
+                return -1;
+        }
     }
 
-    // blank success message
-    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
-    return 0;
+    // If we got here, we hit attempts limit without completing handshake.
+    send_abort(pending_slot, pending_group, RCV_ABORT_GENERIC);
+    print_error("LISTEN: handshake timeout");
+    return -1;
 }
