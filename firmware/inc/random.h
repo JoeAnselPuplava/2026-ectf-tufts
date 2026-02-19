@@ -4,6 +4,7 @@
 #include <ti/driverlib/dl_trng.h>
 #include <wolfssl/wolfcrypt/types.h>
 #include <wolfssl/wolfcrypt/random.h>
+#include "host_messaging.h"
 
 int mspm0_trng_seed(byte* output, word32 sz);
 
