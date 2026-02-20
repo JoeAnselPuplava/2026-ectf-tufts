@@ -1,4 +1,4 @@
-from ectf26_design.gen_secrets import gen_secrets
+from gen_secrets import gen_secrets
 
 
 secrets_out = gen_secrets([1, 2, 3]) 

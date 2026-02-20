@@ -100,9 +100,10 @@ int main(void) {
             list(pkt_len, uart_buf);
             print_debug("List command complete\n");
             break;
-
-        // Handle read command
-        case READ_MSG:
+            
+            // Handle read command
+            case READ_MSG:
+            print_debug("Read command start\n");
             read(pkt_len, uart_buf);
             break;
 

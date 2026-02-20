@@ -17,9 +17,11 @@
 #include "security.h"
 #include "pin_lockout.h"
 
-/* IMPORTANT COMPONENTS FROM HSM.c */
-// extern file_t hsm_status[MAX_FILE_COUNT];
-static file_t current_file;
+// This union ensures we only ever use 8KB of RAM instead of 16KB
+static union {
+    file_t curr_file;
+    read_response_t file_info;
+} shared_buffer;
 
 /**********************************************************
  ******************** HELPER FUNCTIONS ********************
@@ -85,18 +87,17 @@ int list(uint16_t pkt_len, uint8_t *buf) {
 
 /** @brief Perform the read operation
  *
- *  @param pkt_len The length of the incoming packet
- *  @param buf A pointer the incoming message buffer
+ * @param pkt_len The length of the incoming packet
+ * @param buf A pointer the incoming message buffer
  *
  * @return 0 upon success. A negative value on error.
 */
 int read(uint16_t pkt_len, uint8_t *buf) {
     (void)pkt_len;
-
+    print_debug("READING A FILE");
+    
     read_command_t *command = (read_command_t*)buf;
-    read_response_t file_info;
-    file_t curr_file;
-
+    
     if (!check_pin(command->pin)) {
         wrong_pin_lockout_init();
         pin_lockout();
@@ -104,38 +105,43 @@ int read(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
-    memset(&file_info, 0, sizeof(file_info));
-    memset(&curr_file, 0, sizeof(curr_file));
+    file_t *curr_file_ptr = &shared_buffer.curr_file;
+    read_response_t *file_info_ptr = &shared_buffer.file_info;
 
-    if (read_file(command->slot, &curr_file) < 0) {
+    memset(file_info_ptr, 0, sizeof(*file_info_ptr));
+    memset(curr_file_ptr, 0, sizeof(*curr_file_ptr));
+
+    if (read_file(command->slot, curr_file_ptr) < 0) {
         print_error("Failed to read file");
         return -1;
     }
 
-    if (!validate_permission(curr_file.group_id, PERM_READ)) {
+    if (!validate_permission(curr_file_ptr->group_id, PERM_READ)) {
         print_error("Invalid permission");
         return -1;
     }
 
     // Copy name (bounded)
-    // If curr_file.name may not be null-terminated, force termination.
-    memcpy(file_info.name, curr_file.name, MAX_NAME_SIZE);
-    file_info.name[MAX_NAME_SIZE - 1] = '\0';
+    memcpy(file_info_ptr->name, curr_file_ptr->name, MAX_NAME_SIZE);
+    file_info_ptr->name[MAX_NAME_SIZE - 1] = '\0';
 
     // Decrypt contents into response buffer
-    uint16_t plain_len = sizeof(file_info.contents);
+    uint16_t plain_len = sizeof(file_info_ptr->contents);
 
     int ret = decrypt_file_contents(
-        &curr_file,
-        curr_file.group_id,
-        (const char*)curr_file.name,
-        (uint8_t*)file_info.contents,
+        curr_file_ptr,
+        curr_file_ptr->group_id,
+        (const char*)curr_file_ptr->name,
+        (uint8_t*)file_info_ptr->contents,
         &plain_len
     );
+    
     if (ret != 0) {
         print_error("Decrypt failed");
+        secure_zero(curr_file_ptr, sizeof(*curr_file_ptr)); // Wipe on fail
         return -1;
     }
+    
     print_debug("Decrypt successful");
     char dbg[32];
     sprintf(dbg, "Plain length: %lu", (unsigned long)plain_len);
@@ -143,13 +149,13 @@ int read(uint16_t pkt_len, uint8_t *buf) {
 
     // Send plaintext length
     pkt_len_t length = MAX_NAME_SIZE + plain_len;
-    write_packet(CONTROL_INTERFACE, READ_MSG, &file_info, length);
+    write_packet(CONTROL_INTERFACE, READ_MSG, file_info_ptr, length);
     print_debug("Sent read message");
 
-    // optional: zeroize sensitive buffers
-    secure_zero(&curr_file, sizeof(curr_file));
+    // Zeroize sensitive buffers
+    secure_zero(curr_file_ptr, sizeof(file_t));
     print_debug("Zeroed curr_file");
-    // file_info is sent; don’t zeroize it before write_packet
+    
     return 0;
 }
 
@@ -157,15 +163,18 @@ int read(uint16_t pkt_len, uint8_t *buf) {
 
 /** @brief Perform the write operation
  *
- *  @param pkt_len The length of the incoming packet
- *  @param buf A pointer the incoming message buffer
+ * @param pkt_len The length of the incoming packet
+ * @param buf A pointer the incoming message buffer
  *
  * @return 0 upon success. A negative value on error.
 */
 int write(uint16_t pkt_len, uint8_t *buf) {
     write_command_t *command = (write_command_t*)buf;
     int ret;
-    file_t curr_file;
+    
+    // THE FIX: Move 8KB struct to Global RAM (BSS segment)
+    file_t *curr_file_ptr = &shared_buffer.curr_file;
+    memset(curr_file_ptr, 0, sizeof(file_t));
 
     if (!check_pin(command->pin)) {
         wrong_pin_lockout_init();
@@ -179,22 +188,34 @@ int write(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
-    create_file(
-        &curr_file,
+    // create_file will handle zeroing out the struct for us
+    ret = create_file(
+        curr_file_ptr,
         command->group_id,
         command->name,
         command->contents_len,
         command->contents
     );
+    
+    if (ret != 0) {
+        print_error("Error creating file");
+        secure_zero(curr_file_ptr, sizeof(file_t)); // Wipe on fail
+        return -1;
+    }
 
     // Store the file persistently
-    if (write_file(command->slot, &curr_file, command->uuid) < 0) {
+    if (write_file(command->slot, curr_file_ptr, command->uuid) < 0) {
         print_error("Error storing file");
+        secure_zero(curr_file_ptr, sizeof(file_t)); // Wipe on fail
         return -1;
     }
 
     // Success message with an empty body
     write_packet(CONTROL_INTERFACE, WRITE_MSG, NULL, 0);
+    
+    // THE FIX: Wipe the buffer from RAM so plaintext doesn't linger
+    secure_zero(curr_file_ptr, sizeof(file_t));
+    
     return 0;
 }
 

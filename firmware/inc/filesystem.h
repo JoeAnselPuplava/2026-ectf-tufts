@@ -69,31 +69,56 @@ static filesystem_entry_t FILE_ALLOCATION_TABLE[MAX_FILE_COUNT];
  **********************************************************/
 
 
+// /*
+// The reference design allocates files for each slot as follows:
+// 0: 0x10000-0x12400
+// 1: 0x12400-0x14800
+// 2: 0x14800-0x16c00
+// 3: 0x16c00-0x19000
+// 4: 0x19000-0x1b400
+// 5: 0x1b400-0x1d800
+// 6: 0x1d800-0x1fc00
+// 7: 0x1fc00-0x22000
+// */
+// // Calculate the flash address for a given file slot. 9 pages are allocated for each
+// // file.
+// #define FILE_START_PAGE_FROM_SLOT(slot) FILES_START_ADDR + (STORED_FILE_SIZE*slot)
+
+// // Calculate the total size of a file in flash, including its metadata
+// #define FILE_TOTAL_SIZE(len) len + offsetof(file_t, contents)
+
+// // Each file will be 9 pages in size. 8 pages for the file contents + 1 page for
+// // metadata
+// #define FILE_PAGE_COUNT 9
+// #define STORED_FILE_SIZE FLASH_PAGE_SIZE*FILE_PAGE_COUNT
+
+// // first flash address for files
+// #define FILES_START_ADDR 0x10000
 /*
-The reference design allocates files for each slot as follows:
-0: 0x10000-0x12400
-1: 0x12400-0x14800
-2: 0x14800-0x16c00
-3: 0x16c00-0x19000
-4: 0x19000-0x1b400
-5: 0x1b400-0x1d800
-6: 0x1d800-0x1fc00
-7: 0x1fc00-0x22000
+The new secure design allocates files for each slot right before the FAT:
+0: 0x28000-0x2a400
+1: 0x2a400-0x2c800
+2: 0x2c800-0x2ec00
+3: 0x2ec00-0x31000
+4: 0x31000-0x33400
+5: 0x33400-0x35800
+6: 0x35800-0x37c00
+7: 0x37c00-0x3a000
 */
-// Calculate the flash address for a given file slot. 9 pages are allocated for each
-// file.
+
+// Calculate the flash address for a given file slot. 9 pages are allocated for each file.
 #define FILE_START_PAGE_FROM_SLOT(slot) FILES_START_ADDR + (STORED_FILE_SIZE*slot)
 
 // Calculate the total size of a file in flash, including its metadata
 #define FILE_TOTAL_SIZE(len) len + offsetof(file_t, contents)
 
-// Each file will be 9 pages in size. 8 pages for the file contents + 1 page for
-// metadata
+// Each file will be 9 pages in size. 8 pages for the file contents + 1 page for metadata
 #define FILE_PAGE_COUNT 9
 #define STORED_FILE_SIZE FLASH_PAGE_SIZE*FILE_PAGE_COUNT
 
-// first flash address for files
-#define FILES_START_ADDR 0x10000
+// --- THE FIX ---
+// Move the file storage from 64KB (0x10000) up to 160KB (0x28000) to make room for WolfSSL!
+#define FILES_START_ADDR 0x28000
 
 #define FILE_IN_USE 0xdeadbeef
 // used to actually define the file object
