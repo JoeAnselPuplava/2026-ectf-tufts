@@ -18,10 +18,16 @@
 #include "pin_lockout.h"
 
 // This union ensures we only ever use 8KB of RAM instead of 16KB
-static union {
-    file_t curr_file;
-    read_response_t file_info;
-} shared_buffer;
+// static file_t shared_file __attribute__((aligned(8)));
+// static receive_response_t shared_recv_resp __attribute__((aligned(8)));
+// static read_response_t shared_read_resp __attribute__((aligned(8)));
+typedef union {
+    file_t file;
+    read_response_t read_resp;
+    receive_response_t recv_resp;
+} shared_workspace_t;
+
+static shared_workspace_t workspace __attribute__((aligned(8)));
 #define LISTEN_MAX_ATTEMPTS 4
 
 
@@ -38,20 +44,22 @@ static union {
  */
 void generate_list_files(list_response_t *file_list) {
     file_list->n_files = 0;
-    file_t temp_file;
 
     // Loop through all files on the system
     for (uint8_t i = 0; i < MAX_FILE_COUNT; i++) {
         // Check if the file is in use
         if (is_slot_in_use(i)) {
-            read_file(i, &temp_file);
+            // THE FIX: Use the global buffer instead of a local variable
+            read_file(i, &workspace.file);
 
             file_list->metadata[file_list->n_files].slot = i;
-            file_list->metadata[file_list->n_files].group_id = temp_file.group_id;
-            strcpy(file_list->metadata[file_list->n_files].name, (char *)&temp_file.name);
+            file_list->metadata[file_list->n_files].group_id = workspace.file.group_id;
+            strcpy(file_list->metadata[file_list->n_files].name, (char *)&workspace.file.name);
             file_list->n_files++;
         }
     }
+    // Clean up when done
+    secure_zero(&workspace.file, sizeof(workspace.file)); 
 }
 
 /**********************************************************
@@ -102,63 +110,50 @@ int read(uint16_t pkt_len, uint8_t *buf) {
     read_command_t *command = (read_command_t*)buf;
     
     if (!check_pin(command->pin)) {
-        wrong_pin_lockout_init();
-        pin_lockout();
-        print_error("Invalid pin");
-        return -1;
+        wrong_pin_lockout_init(); pin_lockout(); print_error("Invalid pin"); return -1;
     }
 
-    file_t *curr_file_ptr = &shared_buffer.curr_file;
-    read_response_t *file_info_ptr = &shared_buffer.file_info;
+    memset(&workspace, 0, sizeof(workspace));
 
-    memset(file_info_ptr, 0, sizeof(*file_info_ptr));
-    memset(curr_file_ptr, 0, sizeof(*curr_file_ptr));
-
-    if (read_file(command->slot, curr_file_ptr) < 0) {
-        print_error("Failed to read file");
-        return -1;
+    if (read_file(command->slot, &workspace.file) < 0) {
+        print_error("Failed to read file"); return -1;
     }
 
-    if (!validate_permission(curr_file_ptr->group_id, PERM_READ)) {
-        print_error("Invalid permission");
-        return -1;
+    if (!validate_permission(workspace.file.group_id, PERM_READ)) {
+        print_error("Invalid permission"); return -1;
     }
 
-    // Copy name (bounded)
-    memcpy(file_info_ptr->name, curr_file_ptr->name, MAX_NAME_SIZE);
-    file_info_ptr->name[MAX_NAME_SIZE - 1] = '\0';
+    // 1. Save data before we overwrite the union
+    uint16_t group_id = workspace.file.group_id;
+    char temp_name[MAX_NAME_SIZE];
+    memcpy(temp_name, workspace.file.name, MAX_NAME_SIZE);
+    temp_name[MAX_NAME_SIZE - 1] = '\0';
 
-    // Decrypt contents into response buffer
-    uint16_t plain_len = sizeof(file_info_ptr->contents);
+    uint16_t plain_len = MAX_CONTENTS_SIZE;
 
+    // 2. Decrypt in-place. 
     int ret = decrypt_file_contents(
-        curr_file_ptr,
-        curr_file_ptr->group_id,
-        (const char*)curr_file_ptr->name,
-        (uint8_t*)file_info_ptr->contents,
+        &workspace.file,
+        group_id,
+        temp_name,
+        (uint8_t*)workspace.read_resp.contents, 
         &plain_len
     );
     
     if (ret != 0) {
         print_error("Decrypt failed");
-        secure_zero(curr_file_ptr, sizeof(*curr_file_ptr)); // Wipe on fail
+        secure_zero(&workspace, sizeof(workspace)); 
         return -1;
     }
     
-    print_debug("Decrypt successful");
-    char dbg[32];
-    sprintf(dbg, "Plain length: %lu", (unsigned long)plain_len);
-    print_debug(dbg);
+    // 3. Assemble the perfectly aligned header at the top of the union
+    memcpy(workspace.read_resp.name, temp_name, MAX_NAME_SIZE);
 
-    // Send plaintext length
     pkt_len_t length = MAX_NAME_SIZE + plain_len;
-    write_packet(CONTROL_INTERFACE, READ_MSG, file_info_ptr, length);
+    write_packet(CONTROL_INTERFACE, READ_MSG, &workspace.read_resp, length);
     print_debug("Sent read message");
 
-    // Zeroize sensitive buffers
-    secure_zero(curr_file_ptr, sizeof(file_t));
-    print_debug("Zeroed curr_file");
-    
+    secure_zero(&workspace, sizeof(workspace));
     return 0;
 }
 
@@ -173,52 +168,28 @@ int read(uint16_t pkt_len, uint8_t *buf) {
 */
 int write(uint16_t pkt_len, uint8_t *buf) {
     write_command_t *command = (write_command_t*)buf;
-    int ret;
-    
-    // THE FIX: Move 8KB struct to Global RAM (BSS segment)
-    file_t *curr_file_ptr = &shared_buffer.curr_file;
-    memset(curr_file_ptr, 0, sizeof(file_t));
+    memset(&workspace, 0, sizeof(workspace));
 
     if (!check_pin(command->pin)) {
-        wrong_pin_lockout_init();
-        pin_lockout();
-        print_error("Invalid pin");
-        return -1;
+        wrong_pin_lockout_init(); pin_lockout(); print_error("Invalid pin"); return -1;
     }
 
     if (!validate_permission(command->group_id, PERM_WRITE)) {
-        print_error("Invalid permission");
-        return -1;
+        print_error("Invalid permission"); return -1;
     }
 
-    // create_file will handle zeroing out the struct for us
-    ret = create_file(
-        curr_file_ptr,
-        command->group_id,
-        command->name,
-        command->contents_len,
-        command->contents
-    );
-    
-    if (ret != 0) {
+    if (create_file(&workspace.file, command->group_id, command->name, command->contents_len, command->contents) != 0) {
         print_error("Error creating file");
-        secure_zero(curr_file_ptr, sizeof(file_t)); // Wipe on fail
-        return -1;
+        secure_zero(&workspace, sizeof(workspace)); return -1;
     }
 
-    // Store the file persistently
-    if (write_file(command->slot, curr_file_ptr, command->uuid) < 0) {
+    if (write_file(command->slot, &workspace.file, command->uuid) < 0) {
         print_error("Error storing file");
-        secure_zero(curr_file_ptr, sizeof(file_t)); // Wipe on fail
-        return -1;
+        secure_zero(&workspace, sizeof(workspace)); return -1;
     }
 
-    // Success message with an empty body
     write_packet(CONTROL_INTERFACE, WRITE_MSG, NULL, 0);
-    
-    // THE FIX: Wipe the buffer from RAM so plaintext doesn't linger
-    secure_zero(curr_file_ptr, sizeof(file_t));
-    
+    secure_zero(&workspace, sizeof(workspace));
     return 0;
 }
 
@@ -253,7 +224,8 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     receive_req_t req;
     receive_challenge_t chal;
     receive_chalresp_t resp;
-    receive_response_t recv_resp;
+    
+    // THE FIX: Removed local receive_response_t recv_resp!
 
     if (!check_pin(command->pin)) {
         wrong_pin_lockout_init();
@@ -265,7 +237,7 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     memset(&req, 0, sizeof(req));
     memset(&chal, 0, sizeof(chal));
     memset(&resp, 0, sizeof(resp));
-    memset(&recv_resp, 0, sizeof(recv_resp));
+    memset(&workspace, 0, sizeof(workspace)); // Clean workspace
 
     // 1) Send slot request
     req.slot = command->read_slot;
@@ -316,7 +288,9 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
 
     // 5) Listener sends back the file
     len_recv_msg = 0xffff;
-    read_packet(TRANSFER_INTERFACE, &cmd, &recv_resp, &len_recv_msg);
+    
+    // THE FIX: Read directly into the workspace union
+    read_packet(TRANSFER_INTERFACE, &cmd, &workspace.recv_resp, &len_recv_msg);
 
     if (cmd == RECEIVE_ABORT_MSG) {
         print_error("RECEIVE: peer aborted");
@@ -328,13 +302,15 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
-    if (write_file(command->write_slot, &recv_resp.file, recv_resp.uuid) < 0) {
+    // THE FIX: Write the file from the workspace union
+    if (write_file(command->write_slot, &workspace.recv_resp.file, workspace.recv_resp.uuid) < 0) {
         send_abort(resp.slot, resp.group_id, RCV_ABORT_GENERIC);
         print_error("Writing received file failed");
         return -1;
     }
 
     write_packet(CONTROL_INTERFACE, RECEIVE_MSG, NULL, 0);
+    secure_zero(&workspace, sizeof(workspace));
     return 0;
 }
 
@@ -400,8 +376,9 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
     pkt_len_t write_length, read_length;
 
     list_response_t file_list;
-    receive_response_t recv_resp;
     const filesystem_entry_t *metadata;
+    
+    // THE FIX: Removed local receive_response_t recv_resp!
 
     // RECEIVE handshake state
     bool pending_valid = false;
@@ -415,21 +392,18 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
 
         if (read_packet(TRANSFER_INTERFACE, &cmd, uart_buf, &read_length) != MSG_OK) {
             print_error("LISTEN: read_packet failed");
-            // Try to notify peer (best-effort)
             send_abort(pending_slot, pending_group, RCV_ABORT_GENERIC);
             return -1;
         }
 
         switch (cmd) {
             case RECEIVE_ABORT_MSG: {
-                // Any abort => stop immediately
                 pending_valid = false;
                 write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                 return 0;
             }
 
             case INTERROGATE_MSG: {
-                // unchanged interrogate behavior
                 memset(&file_list, 0, sizeof(file_list));
                 generate_list_files(&file_list);
 
@@ -443,19 +417,21 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
             case RECEIVE_REQ_MSG: {
                 receive_req_t *req = (receive_req_t *)uart_buf;
                 receive_challenge_t chal;
-                file_t temp;
+                
+                // THE FIX: Removed local file_t temp!
 
                 memset(&chal, 0, sizeof(chal));
                 chal.slot = req->slot;
+                memset(&workspace, 0, sizeof(workspace));
 
-                if (read_file(req->slot, &temp) < 0) {
-                    // Abort: invalid slot
+                // Use workspace.file to check the slot safely
+                if (read_file(req->slot, &workspace.file) < 0) {
                     send_abort(req->slot, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
                     write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     return 0;
                 }
 
-                chal.group_id = temp.group_id;
+                chal.group_id = workspace.file.group_id;
 
                 // TODO: real RNG later
                 for (int i = 0; i < NONCE_SIZE; i++) {
@@ -468,7 +444,10 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                 memcpy(pending_nonce, chal.nonce, NONCE_SIZE);
 
                 write_packet(TRANSFER_INTERFACE, RECEIVE_CHAL_MSG, &chal, sizeof(chal));
-                break; // wait for next transfer message
+                
+                // Clean up workspace before breaking to next message
+                secure_zero(&workspace, sizeof(workspace));
+                break; 
             }
 
             case RECEIVE_CHALRESP_MSG: {
@@ -495,18 +474,19 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                 }
 
                 // TODO: ECC VERIFY HERE (later)
-                // If verify fails: send_abort(...) and return.
 
                 pending_valid = false;
 
-                memset(&recv_resp, 0, sizeof(recv_resp));
-                if (read_file(resp->slot, &recv_resp.file) < 0) {
+                // THE FIX: Use workspace.recv_resp to assemble the packet
+                memset(&workspace, 0, sizeof(workspace));
+                
+                if (read_file(resp->slot, &workspace.recv_resp.file) < 0) {
                     send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
                     print_error("Failed to read file");
                     return -1;
                 }
 
-                if (recv_resp.file.group_id != resp->group_id) {
+                if (workspace.recv_resp.file.group_id != resp->group_id) {
                     send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
                     print_error("RECEIVE: group mismatch");
                     return -1;
@@ -519,24 +499,25 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                     return -1;
                 }
 
-                memcpy(&recv_resp.uuid, &metadata->uuid, UUID_SIZE);
+                memcpy(&workspace.recv_resp.uuid, &metadata->uuid, UUID_SIZE);
 
                 write_length = sizeof(receive_response_t);
-                write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, &recv_resp, write_length);
+                write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, &workspace.recv_resp, write_length);
 
                 write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
+                
+                // Clean up workspace before exiting
+                secure_zero(&workspace, sizeof(workspace));
                 return 0;
             }
 
             default:
-                // Unknown message: abort and stop
                 send_abort((slot_t)0xFF, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
                 print_error("Bad message type");
                 return -1;
         }
     }
 
-    // If we got here, we hit attempts limit without completing handshake.
     send_abort(pending_slot, pending_group, RCV_ABORT_GENERIC);
     print_error("LISTEN: handshake timeout");
     return -1;

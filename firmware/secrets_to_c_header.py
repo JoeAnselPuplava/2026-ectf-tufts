@@ -146,7 +146,7 @@ def secrets_to_c_header(
             f.write(f"// Secrets for Group 0x{gid:04x}\n")
             f.write(f"static const group_secrets_t GROUP_{gid}_SECRETS = {{\n")
             f.write(f"    .read_key   = {_format_key_as_c_array(read_key_hex,  included=perm.read)},\n")
-            f.write(f"    .write_key  = {_format_key_as_c_array(write_key_hex, included=perm.write)},\n")
+            f.write(f"    .write_key  = {_format_key_as_c_array(write_key_hex, included=(perm.write or perm.read))},\n")
             f.write(f"    .verify_key = {_format_key_as_c_array(verify_key_hex, included=perm.receive)},\n")
             f.write(f"    .check_key  = {_format_key_as_c_array(check_key_hex, included=perm.receive)}\n")
             f.write("};\n\n")

@@ -425,7 +425,11 @@ int decrypt_file_contents(
     uint8_t decrypted_aes_key[AES_KEY_LEN];
     uint32_t decrypted_key_len = sizeof(decrypted_aes_key);
 
-    ret = decrypt_data(group_id, key_blob, ECC_BLOB_RESERVED_SIZE, decrypted_aes_key, &decrypted_key_len);
+    // THE FIX: Only pass the true size of the ECIES blob (113 bytes)
+    // 65 (PubKey) + 16 (IV) + 32 (Ciphertext) = 113
+    uint32_t actual_blob_size = 65 + AES_IV_SIZE + AES_KEY_LEN; 
+
+    ret = decrypt_data(group_id, key_blob, actual_blob_size, decrypted_aes_key, &decrypted_key_len);
 
     if (ret != 0) {
         sprintf(dbg_buf, "decrypt_file: Failed to decrypt AES key (Error %d).", ret);
@@ -462,7 +466,8 @@ int decrypt_file_contents(
     word32 actual_len = 0;
     
     ret = remove_pkcs7_padding(out_plain, ciphertext_len, &actual_len);
-    
+    print_debug("out_plan");
+    print_debug((char *)out_plain);
     if (ret != 0) {
         print_debug("decrypt_file: Padding check failed");
         secure_zero(out_plain, ciphertext_len); 

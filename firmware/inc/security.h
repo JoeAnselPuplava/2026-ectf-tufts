@@ -104,4 +104,5 @@ int check_signature(uint16_t group_id, const uint8_t* input, uint32_t input_len,
 
 
 void secure_zero(void* v, size_t n);
+int init_crypto_engine(void);
 #endif  // __SECURITY_H__
