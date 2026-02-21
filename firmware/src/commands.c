@@ -24,11 +24,7 @@ static union {
 } shared_buffer;
 #define LISTEN_MAX_ATTEMPTS 4
 
-// This union ensures we only ever use 8KB of RAM instead of 16KB
-static union {
-    file_t curr_file;
-    read_response_t file_info;
-} shared_buffer;
+
 
 /**********************************************************
  ******************** HELPER FUNCTIONS ********************
