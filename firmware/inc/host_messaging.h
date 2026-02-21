@@ -35,6 +35,11 @@ typedef enum {
     ACK_MSG = 'A',          // 'A' - 0x41
     DEBUG_MSG = 'D',        // 'D' - 0x44
     ERROR_MSG = 'E',        // 'E' - 0x45
+
+    RECEIVE_REQ_MSG       = 'c',  // requester -> listener (slot)
+    RECEIVE_CHAL_MSG      = 'g',  // listener -> requester (group_id + nonce)
+    RECEIVE_CHALRESP_MSG  = 'p',  // requester -> listener (nonce + signature placeholder)
+    RECEIVE_ABORT_MSG = 'x',
 } msg_type_t;
 
 #pragma pack(push, 1) // Tells the compiler not to pad the struct members
