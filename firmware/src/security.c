@@ -354,16 +354,23 @@ int check_signature(uint16_t group_id, const uint8_t* input, uint32_t input_len,
 
 void secure_zero(void* v, size_t n)
 {
-    volatile uint32_t* p32 = (volatile uint32_t*)v;
+    volatile uint8_t* p8 = (volatile uint8_t*)v;
 
-    // wipe 32-bit chunks
+    // 1) wipe bytes until 4-byte aligned
+    while (n && (((uintptr_t)p8) & 3u)) {
+        *p8++ = 0;
+        n--;
+    }
+
+    // 2) wipe 32-bit chunks (now aligned)
+    volatile uint32_t* p32 = (volatile uint32_t*)p8;
     while (n >= sizeof(uint32_t)) {
         *p32++ = 0;
         n -= sizeof(uint32_t);
     }
 
-    // wipe remaining bytes
-    volatile uint8_t* p8 = (volatile uint8_t*)p32;
+    // 3) wipe remaining bytes
+    p8 = (volatile uint8_t*)p32;
     while (n--) {
         *p8++ = 0;
     }
