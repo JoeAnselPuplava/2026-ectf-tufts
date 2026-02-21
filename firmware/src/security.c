@@ -138,12 +138,14 @@ int encrypt_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, ui
     
     // TRNG Retry Loop for Ephemeral Key Generation
     // We give the hardware up to 500ms to generate this one key safely
-    int retries = 10;
-    while (retries-- > 0) {
-        ret = wc_ecc_make_key(&global_rng, 32, &ephemeral_key);
-        if (ret == 0) break;
-        DL_Common_delayCycles(1600000); // 50ms delay to let TRNG recover
-    }
+    // int retries = 10;
+    // while (retries-- > 0) {
+    //     ret = wc_ecc_make_key(&global_rng, 32, &ephemeral_key);
+    //     if (ret == 0) break;
+    //     DL_Common_delayCycles(1600000); // 50ms delay to let TRNG recover
+    // }
+    // if (ret != 0) goto cleanup;
+    ret = wc_ecc_make_key(&global_rng, 32, &ephemeral_key);
     if (ret != 0) goto cleanup;
 
     ret = wc_ecc_shared_secret(&ephemeral_key, &cached_encrypt_group_key, shared_secret, &secret_len);

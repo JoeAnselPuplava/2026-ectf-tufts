@@ -105,4 +105,5 @@ int check_signature(uint16_t group_id, const uint8_t* input, uint32_t input_len,
 
 void secure_zero(void* v, size_t n);
 int init_crypto_engine(void);
+int generate_random_bytes(uint8_t *output, uint32_t length);
 #endif  // __SECURITY_H__

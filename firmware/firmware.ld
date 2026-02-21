@@ -32,8 +32,8 @@
 
 *****************************************************************************/
 -uinterruptVectors
---stack_size=0x0800  /* Shrink Stack to 2KB */
---heap_size=0x2000   /* Shrink Heap to 768 bytes */
+--stack_size=0x3000  /* Shrink Stack to 2KB */
+--heap_size=0x0010   /* Shrink Heap to 768 bytes */
 
 #define FLASH_BASE 0x6000
 

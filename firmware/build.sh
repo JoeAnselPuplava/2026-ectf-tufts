@@ -104,6 +104,10 @@ WOLFCRYPT_SOURCES=(
     # hmac.c      # Required for HKDF
     wolfmath.c
     memory.c
+    # Speed up
+    sp_int.c
+    sp_c32.c
+    # sp_armthumb.c
 )
 
 # --- UPDATED CFLAGS ---

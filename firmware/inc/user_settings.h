@@ -4,16 +4,30 @@
 /* -------------------------------------------------------------------------
  * Math Configuration
  * ------------------------------------------------------------------------- */
-#define USE_FAST_MATH           // Use the optimized TFM math library
-#define TFM_ECC256              // Optimize strictly for 256-bit curves
-#define FP_MAX_BITS 512         // Max integer size (Shrinks RAM usage)
+// #define USE_FAST_MATH           // Use the optimized TFM math library
+// #define TFM_ECC256              // Optimize strictly for 256-bit curves
+// #define FP_MAX_BITS 512         // Max integer size (Shrinks RAM usage)
+/* -------------------------------------------------------------------------
+ * Math Configuration
+ * ------------------------------------------------------------------------- */
+#define WOLFSSL_SP
+#define WOLFSSL_SP_MATH_ALL
+#define WOLFSSL_HAVE_SP_ECC
+// #define WOLFSSL_SP
+// #define WOLFSSL_SP_SMALL             // <-- RESTORED: Keeps memory footprint tiny
+// #define WOLFSSL_SMALL_STACK          // <-- RESTORED: Prevents stack overflow crashes
+
+// #define WOLFSSL_SP_MATH_ALL
+// #define WOLFSSL_HAVE_SP_ECC
+// #define WOLFSSL_SP_ASM               // <-- ADDED: Enables Assembly math
+// #define WOLFSSL_SP_ARM_THUMB_ASM     // <-- ADDED: Forces the M0+ Thumb-1 architecture
 
 /* -------------------------------------------------------------------------
  * System & Memory Configuration
  * ------------------------------------------------------------------------- */
 #define SINGLE_THREADED         // No OS threads available
 #define NO_FILESYSTEM           // No stdio/filesystem available
-#define WOLFSSL_SMALL_STACK     // Favor heap over stack
+// #define WOLFSSL_SMALL_STACK     // Favor heap over stack
 #define WOLFCRYPT_ONLY          // Build only the crypto (no TLS/SSL)
 #define WC_NO_DEFAULT_DEVID     // No default device ID
 

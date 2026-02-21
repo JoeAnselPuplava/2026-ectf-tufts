@@ -74,13 +74,17 @@ int write_file(slot_t slot, file_t *src, uint8_t *uuid) {
     
     // 1. Store FAT (This function handles its own interrupts)
     store_fat();
+    int pages_to_erase = (length + FLASH_PAGE_SIZE - 1) / FLASH_PAGE_SIZE;
+    sprintf(dbg_buf, "FILE: Target Addr: 0x%08X, Pages: %d", flash_addr, pages_to_erase);
+    print_debug(dbg_buf);
 
     // 2. Erase File Pages safely
     print_debug("FILE: Starting Erase loop...");
     
     // --- SHIELD UP ---
     __disable_irq();
-    for (int i = 0; i < FILE_PAGE_COUNT; i++) {
+
+    for (int i = 0; i < pages_to_erase; i++) {
         flash_simple_erase_page(flash_addr + (FLASH_PAGE_SIZE * i));
     }
     __enable_irq(); 
@@ -154,17 +158,17 @@ static word32 add_pkcs7_padding(uint8_t* data, word32 data_len, word32 block_siz
 static int remove_pkcs7_padding(const uint8_t* data, word32 data_len, word32* out_len)
 {
     if (data_len == 0 || (data_len % AES_BLOCK_SIZE) != 0) {
-        return BAD_FUNC_ARG;
+        return -1;
     }
 
     uint8_t padding_len = data[data_len - 1];
     if (padding_len == 0 || padding_len > AES_BLOCK_SIZE) {
-        return BAD_PADDING_E;
+        return -1;
     }
 
     for (word32 i = 0; i < padding_len; i++) {
         if (data[data_len - 1 - i] != padding_len) {
-            return BAD_PADDING_E;
+            return -1;
         }
     }
 
@@ -181,8 +185,8 @@ static int aes_cbc_encrypt_direct(const uint8_t* key, const uint8_t* iv,
     int ret;
 
     print_debug("  > AES Encrypt Direct: Start");
-    if (!key || !iv || !in || !out || len == 0) return BAD_FUNC_ARG;
-    if (len % AES_BLOCK_SIZE) return BAD_FUNC_ARG;
+    if (!key || !iv || !in || !out || len == 0) return -1;
+    if (len % AES_BLOCK_SIZE) return -1;
 
     ret = wc_AesSetKey(&ctx, key, AES_KEY_LEN, NULL, AES_ENCRYPTION);
     if (ret != 0) {
@@ -218,10 +222,10 @@ static int aes_cbc_decrypt_direct(const uint8_t* key, const uint8_t* iv,
 
     print_debug("  > AES Decrypt Direct: Start");
 
-    if (!key || !iv || !in || !out || len == 0) return BAD_FUNC_ARG;
+    if (!key || !iv || !in || !out || len == 0) return -1;
     if (len % AES_BLOCK_SIZE) {
         print_debug("  > AES Decrypt Error: Bad block alignment");
-        return BAD_FUNC_ARG;
+        return -1;
     }
 
     ret = wc_AesSetKey(&ctx, key, AES_KEY_LEN, NULL, AES_DECRYPTION);
@@ -269,7 +273,7 @@ int create_file(
     /* 1. Validate Arguments */
     if (!dest || !name || (!contents_plain && contents_len != 0)) {
         print_debug("create_file: Bad Arguments");
-        return BAD_FUNC_ARG;
+        return -1;
     }
 
     memset(dest, 0, sizeof(file_t));
@@ -280,7 +284,7 @@ int create_file(
 
     if (contents_len > MAX_CONTENTS_SIZE) {
         print_debug("create_file: Buffer Overflow Error");
-        return BUFFER_E;
+        return -1;
     }
 
    /* 2. Generate Random AES Key and IV */
@@ -324,7 +328,7 @@ int create_file(
     if (blob_actual_len > ECC_BLOB_RESERVED_SIZE) {
         print_debug("create_file: ECC Blob too large for header!");
         secure_zero(aes_key, sizeof(aes_key));
-        return BUFFER_E;
+        return -1;
     }
 
     /* 4 & 5. Check Capacity and Calculate Padding */
@@ -337,7 +341,7 @@ int create_file(
     if (overhead + padded_len > sizeof(dest->contents)) {
         print_debug("create_file: Total file size exceeds storage capacity");
         secure_zero(aes_key, sizeof(aes_key));
-        return BUFFER_E;
+        return -1;
     }
 
     /* 6. Write Header and Encrypt In-Place */
@@ -387,12 +391,12 @@ int decrypt_file_contents(
     print_debug(dbg_buf);
 
     if (!src || !out_plain || !out_plain_len) {
-        return BAD_FUNC_ARG;
+        return -1;
     }
 
     if (src->contents_len < TOTAL_HEADER_LEN) {
         print_debug("decrypt_file: File too short to contain header");
-        return BUFFER_E;
+        return -1;
     }
 
     /* Pointers into the file buffer */
@@ -406,7 +410,7 @@ int decrypt_file_contents(
 
     if (ciphertext_len == 0 || (ciphertext_len % AES_BLOCK_SIZE) != 0) {
         print_debug("decrypt_file: Invalid ciphertext length (not block aligned)");
-        return BAD_FUNC_ARG;
+        return -1;
     }
 
     /* 1. Decrypt the AES Key Blob using Group Private Key */
@@ -440,7 +444,7 @@ int decrypt_file_contents(
     if (*out_plain_len < ciphertext_len) {
         print_debug("decrypt_file: Output buffer too small");
         secure_zero(decrypted_aes_key, sizeof(decrypted_aes_key));
-        return BUFFER_E;
+        return -1;
     }
 
     ret = aes_cbc_decrypt_direct(decrypted_aes_key, iv, ciphertext, out_plain, ciphertext_len);
