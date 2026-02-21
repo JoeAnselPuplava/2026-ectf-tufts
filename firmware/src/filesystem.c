@@ -283,34 +283,24 @@ int create_file(
         return BUFFER_E;
     }
 
-    /* 2. Generate Random AES Key and IV */
+   /* 2. Generate Random AES Key and IV */
     print_debug("create_file: Generating random AES key and IV");
-    
-    ret = wc_InitRng(&rng);
-    if (ret != 0) {
-        sprintf(dbg_buf, "create_file: wc_InitRng failed %d", ret);
-        print_debug(dbg_buf);
-        return ret;
-    }
 
     uint8_t aes_key[AES_KEY_LEN];
     uint8_t iv[AES_IV_LEN];
 
-    ret = wc_RNG_GenerateBlock(&rng, aes_key, sizeof(aes_key));
-    if (ret != 0) {
+    // Use the safe, global RNG wrapper!
+    if (generate_random_bytes(aes_key, sizeof(aes_key)) != 0) {
         print_debug("create_file: RNG Gen Key failed");
-        wc_FreeRng(&rng); 
-        return ret;
+        return -1;
     }
 
-    ret = wc_RNG_GenerateBlock(&rng, iv, sizeof(iv));
-    if (ret != 0) {
+    if (generate_random_bytes(iv, sizeof(iv)) != 0) {
         print_debug("create_file: RNG Gen IV failed");
-        wc_FreeRng(&rng); 
-        return ret;
+        secure_zero(aes_key, sizeof(aes_key));
+        return -1;
     }
 
-    wc_FreeRng(&rng);
 
     /* 3. Encrypt AES Key using Group's Public Write Key */
     print_debug("create_file: Encrypting AES Key with Group Public Key...");

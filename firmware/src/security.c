@@ -123,8 +123,27 @@ int encrypt_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, ui
         cached_encrypt_group_id = group_id;
     }
 
-    wc_ecc_init(&ephemeral_key);
-    ret = wc_ecc_make_key(&global_rng, 32, &ephemeral_key);
+    // wc_ecc_init(&ephemeral_key);
+    // ret = wc_ecc_make_key(&global_rng, 32, &ephemeral_key);
+    // if (ret != 0) goto cleanup;
+
+    // ret = wc_ecc_shared_secret(&ephemeral_key, &cached_encrypt_group_key, shared_secret, &secret_len);
+    // if (ret != 0) goto cleanup;
+
+    // wc_Sha256Hash(shared_secret, secret_len, aes_key);
+
+    // ret = wc_RNG_GenerateBlock(&global_rng, iv, AES_IV_SIZE);
+    // if (ret != 0) goto cleanup;
+   wc_ecc_init(&ephemeral_key);
+    
+    // TRNG Retry Loop for Ephemeral Key Generation
+    // We give the hardware up to 500ms to generate this one key safely
+    int retries = 10;
+    while (retries-- > 0) {
+        ret = wc_ecc_make_key(&global_rng, 32, &ephemeral_key);
+        if (ret == 0) break;
+        DL_Common_delayCycles(1600000); // 50ms delay to let TRNG recover
+    }
     if (ret != 0) goto cleanup;
 
     ret = wc_ecc_shared_secret(&ephemeral_key, &cached_encrypt_group_key, shared_secret, &secret_len);
@@ -132,7 +151,9 @@ int encrypt_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, ui
 
     wc_Sha256Hash(shared_secret, secret_len, aes_key);
 
-    ret = wc_RNG_GenerateBlock(&global_rng, iv, AES_IV_SIZE);
+    // THE FIX: Use our lightning-fast Software PRNG for the AES IV!
+    // This removes 16 bytes of heavy load from the hardware TRNG
+    ret = generate_random_bytes(iv, AES_IV_SIZE);
     if (ret != 0) goto cleanup;
 
     ret = wc_ecc_export_x963(&ephemeral_key, output, &ephemeral_pub_len);
@@ -293,4 +314,56 @@ void secure_zero(void* v, size_t n)
     while (n--) {
         *p8++ = 0;
     }
+}
+// Add this near the top of security.c with your other includes
+extern void DL_Common_delayCycles(uint32_t cycles);
+
+// --- Global Software PRNG State ---
+static uint8_t prng_seed[32];
+static uint32_t prng_counter = 0;
+static bool prng_seeded = false;
+
+// Add this extern so we can talk to the hardware directly
+
+int generate_random_bytes(uint8_t *output, uint32_t length) {
+    if (!prng_seeded) {
+        if (init_crypto_engine() != 0) return -1;
+        
+        print_debug("PRNG: Gathering hardware entropy for master seed...");
+        DL_Common_delayCycles(3200000); 
+        
+        for(int i = 0; i < 32; i += 4) {
+            int hardware_retries = 20;
+            
+            // THE FIX: Call the hardware driver directly to avoid infinite recursion!
+            while(mspm0_trng_seed(prng_seed + i, 4) != 0) {
+                DL_Common_delayCycles(640000); 
+                if (--hardware_retries == 0) return -1; 
+            }
+        }
+        prng_seeded = true;
+        print_debug("PRNG: Master seed secured!");
+    }
+
+    // Software PRNG: SHA-256(Seed || Counter)
+    // This is infinitely fast and will never exhaust the hardware!
+    uint8_t hash[WC_SHA256_DIGEST_SIZE];
+    uint32_t generated = 0;
+    
+    while (generated < length) {
+        wc_Sha256 sha;
+        wc_InitSha256(&sha);
+        wc_Sha256Update(&sha, prng_seed, 32);
+        wc_Sha256Update(&sha, (uint8_t*)&prng_counter, sizeof(prng_counter));
+        wc_Sha256Final(&sha, hash);
+        wc_Sha256Free(&sha);
+        
+        prng_counter++;
+        
+        uint32_t take = (length - generated > 32) ? 32 : (length - generated);
+        memcpy(output + generated, hash, take);
+        generated += take;
+    }
+    
+    return 0;
 }

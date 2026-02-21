@@ -33,8 +33,8 @@
 #define WC_NO_HASHDRBG          // Disable WolfSSL's software DRBG layer
 
 // Force WolfSSL to call our function directly for ALL random generation
-#define CUSTOM_RAND_GENERATE_BLOCK mspm0_trng_seed
+#define CUSTOM_RAND_GENERATE_BLOCK generate_random_bytes
 
-extern int mspm0_trng_seed(unsigned char* output, unsigned int sz);
+extern int generate_random_bytes(unsigned char* output, unsigned int sz);
 
 #endif /* WOLFSSL_USER_SETTINGS_H */
