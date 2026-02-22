@@ -1,5 +1,6 @@
 # tests for list
 from test_common import *
+from test_com_w import write_files
 
 import time
 from loguru import logger

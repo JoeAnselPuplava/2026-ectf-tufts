@@ -79,7 +79,7 @@ def main():
     success_list_files()
     # pin_error_list_files()
     # currently failing 
-    time_success_list_files()
+    time_success_list_files() 
     # time_pin_error_list_files()
 
     if VERBOSE:

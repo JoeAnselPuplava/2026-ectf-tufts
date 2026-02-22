@@ -49,6 +49,25 @@ void generate_list_files(list_response_t *file_list) {
     }
 }
 
+void validate_list_files(list_response_t *file_list, list_response_t *validated_file_list, interrogate_request_t *perms) {
+    validated_file_list->n_files = 0; 
+
+    for (uint8_t i = 0; i < file_list->n_files; i++) {
+        for (uint8_t j = 0; j < MAX_PERMS; j++) { // TODO: replace MAX_PERMS with perm size if time cutdown needed 
+            // check that file group and permission group match 
+            if (file_list->metadata[i].group_id == perms->permissions[j].group_id) {
+                // verify that requesting HSM has receive permission 
+                if (perms->permissions[j].receive) {
+                    validated_file_list->metadata[validated_file_list->n_files].slot = file_list->metadata[i].slot;
+                    validated_file_list->metadata[validated_file_list->n_files].group_id = file_list->metadata[i].group_id;
+                    strcpy(validated_file_list->metadata[validated_file_list->n_files].name, file_list->metadata[i].name); // TODO: come replace strcpy
+                    validated_file_list->n_files++; 
+                }
+            }
+        }
+    }
+}
+
 /**********************************************************
  ******************** COMMAND HANDLERS ********************
  **********************************************************/
@@ -232,6 +251,7 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
  */
 int interrogate(uint16_t pkt_len, uint8_t *buf) {
     interrogate_command_t *command = (interrogate_command_t*)buf;
+    interrogate_request_t request; 
     msg_type_t cmd;
     list_response_t final_list_buf;
     uint16_t len_recv_msg;
@@ -244,8 +264,14 @@ int interrogate(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
+    // zeroize the buffers we will use
+    memset(&request, 0, sizeof(request));
+
+    // gather all permissions 
+    memcpy(&request.permissions, &global_permissions, sizeof(group_permission_t) * MAX_PERMS);
+
     // request the file list from the neighboring device
-    write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, NULL, 0);
+    write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, (void *)&request, sizeof(interrogate_request_t));
 
     // set essentially no limit to the receive message size
     len_recv_msg = 0xffff;
@@ -271,7 +297,9 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
     uint8_t uart_buf[sizeof(receive_request_t)];
     msg_type_t cmd;
     pkt_len_t write_length, read_length;
+    interrogate_request_t *inter_req; 
     list_response_t file_list;
+    list_response_t validated_file_list; 
     receive_request_t *command;
     receive_response_t recv_resp;
     const filesystem_entry_t *metadata;
@@ -284,18 +312,22 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
 
     switch (cmd) {
         case INTERROGATE_MSG:
+            // get the request 
+            inter_req = (interrogate_request_t *)uart_buf;
+
             // zeroize the buffers we will use
             memset(&file_list, 0, sizeof(file_list));
+            memset(&validated_file_list, 0, sizeof(validated_file_list));
 
             // generate a list of files for the other device
             generate_list_files(&file_list);
 
-            // TODO: the reference design does not implement *ANY* security
-            // you will want to add something here to comply with SR1
+            // check every file against the provided permission list on return only files with receive perms 
+            validate_list_files(&file_list, &validated_file_list, inter_req);
 
             // send the list of files on this device
-            write_length = LIST_PKT_LEN(file_list.n_files);
-            write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, &file_list, write_length);
+            write_length = LIST_PKT_LEN(validated_file_list.n_files);
+            write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, &validated_file_list, write_length);
             break;
         case RECEIVE_MSG:
             // get the request

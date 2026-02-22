@@ -87,6 +87,10 @@ typedef struct {
     pin_t pin;
 } interrogate_command_t;
 
+typedef struct {
+    group_permission_t permissions[MAX_PERMS];
+} interrogate_request_t; 
+
 /**********************************************************
  ******************** RESPONSE STRUCTS ********************
  **********************************************************/
@@ -100,6 +104,7 @@ typedef struct {
     char name[MAX_NAME_SIZE];
     uint8_t contents[MAX_CONTENTS_SIZE];
 } read_response_t;
+
 
 #pragma pack(pop) // Tells the compiler to resume padding struct members
 
