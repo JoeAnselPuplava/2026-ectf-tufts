@@ -160,6 +160,7 @@ uint8_t encrypt_perms(interrogate_request_t *request, uint8_t *enc_request) {
     };
 
     // create iv 
+    // uncomment after everything is merged and can access generate_random_bytes
     // ret = generate_random_bytes(iv, AES_IV_SIZE);
     // if (ret != 0) return ret;
 
@@ -177,12 +178,14 @@ uint8_t encrypt_perms(interrogate_request_t *request, uint8_t *enc_request) {
     serialize_request(padded, request);
     pad_request(padded);
 
+    // append the iv to the front of the encrypted data 
+    memcpy(enc_request, iv, AES_IV_SIZE);
+
     // encrypt the data 
-    ret = wc_AesCbcEncrypt(&aes, enc_request, padded, REQUEST_PADDED_SIZE);
+    ret = wc_AesCbcEncrypt(&aes, enc_request+AES_IV_SIZE, padded, REQUEST_PADDED_SIZE);
     if (ret != 0) return ret;
 
     // free everything 
-    // TODO: Find a way to get the iv to the decryption function 
     wc_AesFree(&aes);
     return ret; 
 }
@@ -191,7 +194,7 @@ uint8_t decrypt_perms(interrogate_request_t *request, uint8_t *enc_request) {
     int ret; 
     Aes aes; 
     uint8_t decrypted[REQUEST_SERIALIZED_SIZE + AES_BLOCK_SIZE];
-    uint8_t iv[AES_IV_SIZE] = { 0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f};
+    uint8_t iv[AES_IV_SIZE]; 
     const byte key[AES_KEY_SIZE] = {
         0x60,0x3d,0xeb,0x10,0x15,0xca,0x71,0xbe,
         0x2b,0x73,0xae,0xf0,0x85,0x7d,0x77,0x81,
@@ -205,12 +208,15 @@ uint8_t decrypt_perms(interrogate_request_t *request, uint8_t *enc_request) {
 
     // TODO: get the key from global secrets 
 
+    // extract the iv from the buffer
+    memcpy(iv, enc_request, AES_IV_SIZE);
+
     // set the key 
     ret = wc_AesSetKey(&aes, key, AES_KEY_SIZE, iv, AES_ENCRYPTION);
     if (ret != 0) return ret;
 
     // decrypt the data 
-    ret = wc_AesCbcDecrypt(&aes, decrypted, enc_request, REQUEST_PADDED_SIZE);
+    ret = wc_AesCbcDecrypt(&aes, decrypted, enc_request+AES_IV_SIZE, REQUEST_PADDED_SIZE);
     if (ret != 0) return ret;
 
     wc_AesFree(&aes);
