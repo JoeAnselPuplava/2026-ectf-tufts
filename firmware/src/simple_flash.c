@@ -10,6 +10,7 @@
  *
  * @copyright Copyright (c) 2026 The MITRE Corporation
  */
+#define FLASH_CHUNK_SIZE 256
 
 #include "simple_flash.h"
 
@@ -77,27 +78,47 @@ int flash_simple_write(uint32_t address, void* buffer, uint32_t size) {
     DL_FlashCTL_executeClearStatus(FLASHCTL);
     DL_FlashCTL_unprotectSector(FLASHCTL, address, DL_FLASHCTL_REGION_SELECT_MAIN);
 
-    // program function expects size to be the number of 32-bit words
-    uint32_t size_32b = (size % 4 == 0) ? (size / 4) : (size / 4) + 1;
-    // it also expects it to be an even number
-    size_32b = (size_32b % 2 == 0) ? size_32b : size_32b + 1;
+    uint32_t bytes_written = 0;
+    uint8_t* byte_buf = (uint8_t*)buffer;
 
-    // write the data into a correctly sized region to ensure no undefined behavior
-    uint32_t write_data[size_32b];
-    memset(write_data, 0xff, size_32b*4);
-    memcpy(write_data, buffer, size);
+    // Loop through the buffer in safe, fixed-size chunks
+    while (bytes_written < size) {
+        // Allocate a fixed 256-byte chunk on the stack and pad with 0xFF
+        uint32_t chunk[FLASH_CHUNK_SIZE / 4];
+        memset(chunk, 0xFF, sizeof(chunk));
 
-    // if memory section is corrected, make sure to write the ECC (you have been warned)
-    cmdStatus = DL_FlashCTL_programMemoryBlockingFromRAM64WithECCGenerated(
-        FLASHCTL, address, (uint32_t *)write_data, size_32b, DL_FLASHCTL_REGION_SELECT_MAIN
-    );
-    if (cmdStatus == DL_FLASHCTL_COMMAND_STATUS_FAILED) {
-        return -1;
+        // Determine how many bytes to copy in this iteration
+        uint32_t bytes_to_copy = size - bytes_written;
+        if (bytes_to_copy > FLASH_CHUNK_SIZE) {
+            bytes_to_copy = FLASH_CHUNK_SIZE;
+        }
+
+        // Copy the data into our padded local chunk
+        memcpy(chunk, byte_buf + bytes_written, bytes_to_copy);
+
+        // Calculate the number of 32-bit words for this chunk
+        uint32_t size_32b = (bytes_to_copy % 4 == 0) ? (bytes_to_copy / 4) : (bytes_to_copy / 4) + 1;
+        // The API requires an even number of 32-bit words (64-bit alignment)
+        size_32b = (size_32b % 2 == 0) ? size_32b : size_32b + 1;
+
+        // Write the chunk to flash
+        cmdStatus = DL_FlashCTL_programMemoryBlockingFromRAM64WithECCGenerated(
+            FLASHCTL, address + bytes_written, chunk, size_32b, DL_FLASHCTL_REGION_SELECT_MAIN
+        );
+        
+        if (cmdStatus == DL_FLASHCTL_COMMAND_STATUS_FAILED) {
+            return -1;
+        }
+        
+        // Wait for the chunk to finish writing
+        bool ret = DL_FlashCTL_waitForCmdDone(FLASHCTL);
+        if (ret == false) {
+            return -1;
+        }
+
+        // Move to the next chunk
+        bytes_written += bytes_to_copy;
     }
-    // returns a boolean, so handle that accordingly
-    bool ret = DL_FlashCTL_waitForCmdDone(FLASHCTL);
-    if (ret == false) {
-        return -1;
-    }
+
     return 0;
 }
