@@ -19,6 +19,7 @@ from loguru import logger
 # REPLACED: py_ecc with cryptography for SECP256R1
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import serialization
+from Crypto.Random import get_random_bytes
 
 def gen_secrets(groups: list[int]) -> bytes:
     """Generate the contents secrets file
@@ -38,6 +39,10 @@ def gen_secrets(groups: list[int]) -> bytes:
 
     # Create the secrets dictionary
     glob_sec = {}
+
+    # Add AES Key 
+    aes_key = get_random_bytes(32)
+    glob_sec["aes_key"] = { "key": aes_key }
 
     for group in groups:
         # --- Pair 1: Read (Private) / Write (Public) ---

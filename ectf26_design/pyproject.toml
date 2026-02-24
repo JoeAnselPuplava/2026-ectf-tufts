@@ -12,6 +12,7 @@ dependencies = [
     "loguru",
     "cryptography",
     "cryptography",
+    "crypto",
 ]
 
 [project.scripts]
