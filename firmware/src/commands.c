@@ -252,6 +252,7 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
 int interrogate(uint16_t pkt_len, uint8_t *buf) {
     interrogate_command_t *command = (interrogate_command_t*)buf;
     interrogate_request_t request; 
+    uint8_t *enc_request; 
     msg_type_t cmd;
     list_response_t final_list_buf;
     uint16_t len_recv_msg;
@@ -270,8 +271,11 @@ int interrogate(uint16_t pkt_len, uint8_t *buf) {
     // gather all permissions 
     memcpy(&request.permissions, &global_permissions, sizeof(group_permission_t) * MAX_PERMS);
 
+    // encrypt perms 
+    encrypt_perms(&request, enc_request);
+
     // request the file list from the neighboring device
-    write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, (void *)&request, sizeof(interrogate_request_t));
+    write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, enc_request, sizeof(enc_request));
 
     // set essentially no limit to the receive message size
     len_recv_msg = 0xffff;
@@ -298,6 +302,7 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
     msg_type_t cmd;
     pkt_len_t write_length, read_length;
     interrogate_request_t *inter_req; 
+    uint8_t *enc_request; 
     list_response_t file_list;
     list_response_t validated_file_list; 
     receive_request_t *command;
@@ -313,7 +318,8 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
     switch (cmd) {
         case INTERROGATE_MSG:
             // get the request 
-            inter_req = (interrogate_request_t *)uart_buf;
+            enc_request = (uint8_t *)uart_buf; 
+            decrypt_perms(inter_req, enc_request);
 
             // zeroize the buffers we will use
             memset(&file_list, 0, sizeof(file_list));
@@ -364,3 +370,5 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
     write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
     return 0;
 }
+
+

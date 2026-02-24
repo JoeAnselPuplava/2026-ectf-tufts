@@ -13,7 +13,19 @@
 #include "secrets.h"
 #include "security.h"
 #include "host_messaging.h"
+#include "commands.h"
 #include <wolfssl/wolfcrypt/sha256.h>
+#include <wolfssl/wolfcrypt/aes.h>
+#include <wolfssl/wolfcrypt/random.h>
+
+#define AES_BLOCK_SIZE           16
+#define AES_KEY_SIZE             32
+#define AES_IV_SIZE              16
+
+#define PERM_SERIALIZED_SIZE      5
+#define REQUEST_SERIALIZED_SIZE  (MAX_PERMS * PERM_SERIALIZED_SIZE)
+#define REQUEST_PAD_LEN          (AES_BLOCK_SIZE - (REQUEST_SERIALIZED_SIZE % AES_BLOCK_SIZE))
+#define REQUEST_PADDED_SIZE      (REQUEST_SERIALIZED_SIZE + REQUEST_PAD_LEN)
 
 bool check_pin(unsigned char *pin) {
     print_debug("Checking PIN\n");
@@ -91,3 +103,122 @@ bool validate_permission(uint16_t group_id, permission_enum_t perm) {
 
     return false;
 }
+
+static void serialize_permission(uint8_t *out, group_permission_t *perm) {
+    // group_id in big-endian
+    out[0] = (perm->group_id >> 8) & 0xFF;
+    out[1] = perm->group_id & 0xFF;
+
+    out[2] = perm->read    ? 1 : 0;
+    out[3] = perm->write   ? 1 : 0;
+    out[4] = perm->receive ? 1 : 0;
+}
+
+static void deserialize_permission(const uint8_t *in, group_permission_t *perm) {
+    // group_id was big-endian
+    perm->group_id = ((uint16_t)in[0] << 8) | (uint16_t)in[1];
+
+    perm->read    = in[2] ? true : false;
+    perm->write   = in[3] ? true : false;
+    perm->receive = in[4] ? true : false;
+}
+
+static void serialize_request(uint8_t *buffer, interrogate_request_t *req) {
+    uint8_t offset = 0;
+
+    for (uint8_t i = 0; i < MAX_PERMS; i++) {
+        serialize_permission(&buffer[offset], &req->permissions[i]);
+        offset += PERM_SERIALIZED_SIZE;
+    }
+}
+
+static void deserialize_request(const uint8_t *buffer, interrogate_request_t *req) {
+    uint8_t offset = 0;
+
+    for (uint8_t i = 0; i < MAX_PERMS; i++) {
+        deserialize_permission(&buffer[offset],
+                               &req->permissions[i]);
+        offset += PERM_SERIALIZED_SIZE;
+    }
+}
+
+static void pad_request(uint8_t *buffer) {
+    for (uint8_t i = 0; i < REQUEST_PAD_LEN; i++)
+        buffer[REQUEST_SERIALIZED_SIZE + i] = REQUEST_PAD_LEN; 
+}
+
+uint8_t encrypt_perms(interrogate_request_t *request, uint8_t *enc_request) { 
+    int ret; 
+    Aes aes; 
+    uint8_t padded[REQUEST_SERIALIZED_SIZE + AES_BLOCK_SIZE];
+    uint8_t iv[AES_IV_SIZE] = { 0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f};
+    const byte key[AES_KEY_SIZE] = {
+        0x60,0x3d,0xeb,0x10,0x15,0xca,0x71,0xbe,
+        0x2b,0x73,0xae,0xf0,0x85,0x7d,0x77,0x81,
+        0x1f,0x35,0x2c,0x07,0x3b,0x61,0x08,0xd7,
+        0x2d,0x98,0x10,0xa3,0x09,0x14,0xdf,0xf4
+    };
+
+    // create iv 
+    // ret = generate_random_bytes(iv, AES_IV_SIZE);
+    // if (ret != 0) return ret;
+
+    // initialize aes 
+    ret = wc_AesInit(&aes, NULL, INVALID_DEVID);
+    if (ret != 0) return ret;
+
+    // TODO: get the key from global secrets 
+
+    // set the key 
+    ret = wc_AesSetKey(&aes, key, AES_KEY_SIZE, iv, AES_ENCRYPTION);
+    if (ret != 0) return ret;
+
+    // convert and pad request 
+    serialize_request(padded, request);
+    pad_request(padded);
+
+    // encrypt the data 
+    ret = wc_AesCbcEncrypt(&aes, enc_request, padded, REQUEST_PADDED_SIZE);
+    if (ret != 0) return ret;
+
+    // free everything 
+    // TODO: Find a way to get the iv to the decryption function 
+    wc_AesFree(&aes);
+    return ret; 
+}
+
+uint8_t decrypt_perms(interrogate_request_t *request, uint8_t *enc_request) {
+    int ret; 
+    Aes aes; 
+    uint8_t decrypted[REQUEST_SERIALIZED_SIZE + AES_BLOCK_SIZE];
+    uint8_t iv[AES_IV_SIZE] = { 0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f};
+    const byte key[AES_KEY_SIZE] = {
+        0x60,0x3d,0xeb,0x10,0x15,0xca,0x71,0xbe,
+        0x2b,0x73,0xae,0xf0,0x85,0x7d,0x77,0x81,
+        0x1f,0x35,0x2c,0x07,0x3b,0x61,0x08,0xd7,
+        0x2d,0x98,0x10,0xa3,0x09,0x14,0xdf,0xf4
+    };
+
+    // initialize aes 
+    ret = wc_AesInit(&aes, NULL, INVALID_DEVID);
+    if (ret != 0) return ret;
+
+    // TODO: get the key from global secrets 
+
+    // set the key 
+    ret = wc_AesSetKey(&aes, key, AES_KEY_SIZE, iv, AES_ENCRYPTION);
+    if (ret != 0) return ret;
+
+    // decrypt the data 
+    ret = wc_AesCbcDecrypt(&aes, decrypted, enc_request, REQUEST_PADDED_SIZE);
+    if (ret != 0) return ret;
+
+    wc_AesFree(&aes);
+
+    // deserialize (unpadding not needed because all sizeds are constant)
+    deserialize_request(decrypted, request);
+
+    return 0; 
+}
+
+
