@@ -89,6 +89,7 @@ int list(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
+    print_debug("In list function\n");
     // write success packet with list
     pkt_len_t length = LIST_PKT_LEN(file_list.n_files);
     write_packet(CONTROL_INTERFACE, LIST_MSG, &file_list, length);
@@ -315,15 +316,6 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
 }
 
 
-/** @brief Perform the receive operation
- *
- *  @param pkt_len The length of the incoming packet
- *  @param buf A pointer the incoming message buffer
- *
- * @return 0 upon success. A negative value on error.
-*/
-
-
 /** @brief Perform the interrogate operation
  *
  *  @param pkt_len The length of the incoming packet
@@ -349,10 +341,10 @@ int interrogate(uint16_t pkt_len, uint8_t *buf) {
     write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, NULL, 0);
 
     // set essentially no limit to the receive message size
-    len_recv_msg = 0xffff;
+    len_recv_msg = 0;
 
     // recieve the response message
-    read_packet(TRANSFER_INTERFACE, &cmd, &final_list_buf, &len_recv_msg);
+    read_packet(TRANSFER_INTERFACE, &cmd, &final_list_buf, &len_recv_msg, sizeof(final_list_buf));
     if (cmd != INTERROGATE_MSG) {
         print_error("Opcode mismatch");
         return -1;

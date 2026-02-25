@@ -57,7 +57,9 @@ int store_fat() {
 
 int write_file(slot_t slot, file_t *src, uint8_t *uuid) {
     unsigned int length, flash_addr;
-
+    if (slot < 0 || slot >= MAX_FILE_COUNT) {
+        return -1;
+    }
     sprintf(dbg_buf, "write_file: Writing slot %d", slot);
     print_debug(dbg_buf);
 
@@ -514,6 +516,10 @@ int decrypt_file_contents(
 int read_file(slot_t slot, file_t *dest) {
     int flash_addr, file_size;
 
+    if (slot < 0 || slot >= MAX_FILE_COUNT) {
+        return -1;
+    }
+    
     flash_addr = FILE_ALLOCATION_TABLE[slot].flash_addr;
     file_size = FILE_ALLOCATION_TABLE[slot].length;
 
