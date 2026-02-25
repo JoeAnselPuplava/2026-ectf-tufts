@@ -92,8 +92,10 @@ bool validate_permission(uint16_t group_id, permission_enum_t perm) {
 // --- Crypto Operations ---
 
 int encrypt_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, uint8_t* output, uint32_t* output_len) {
-    static ecc_key ephemeral_key;
-    static Aes aes;
+    ecc_key ephemeral_key;
+    Aes aes;
+    // static ecc_key ephemeral_key;
+    // static Aes aes;
 
     int ret;
     uint8_t shared_secret[32]; 
@@ -176,8 +178,10 @@ cleanup:
 }
 
 int decrypt_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, uint8_t* output, uint32_t* output_len) {
-    static ecc_key ephemeral_pub_key; 
-    static Aes aes;
+    ecc_key ephemeral_pub_key; 
+    Aes aes;
+    // static ecc_key ephemeral_pub_key; 
+    // static Aes aes;
 
     int ret;
     uint8_t shared_secret[32];
@@ -288,11 +292,103 @@ cleanup:
 
 // TODO: Implement sign_data and check_signature later
 int sign_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t* sig_len) {
-    return 0;
+    static ecc_key cached_sign_key;
+    static uint16_t cached_sign_group_id = 0xFFFF;
+    
+    int ret;
+    uint8_t hash[WC_SHA256_DIGEST_SIZE];
+
+    if (init_crypto_engine() != 0) return -1;
+    if (!validate_permission(group_id, PERM_RECEIVE)) return PERMISSION_DENIED;
+
+    // 1. KEY CACHING LOGIC
+    if (group_id != cached_sign_group_id) {
+        if (cached_sign_group_id != 0xFFFF) wc_ecc_free(&cached_sign_key);
+
+        const group_secrets_t* secrets = (const group_secrets_t*)get_group_secrets(group_id);
+        if (!secrets || secrets->verify_key[0] == 0) return BAD_FUNC_ARG;
+
+        wc_ecc_init(&cached_sign_key);
+        
+        // Attach RNG for signing operations
+        wc_ecc_set_rng(&cached_sign_key, &global_rng);
+
+        // Import the Group's Private verify_key (and the check_key for consistency tests)
+        ret = wc_ecc_import_private_key_ex(
+            secrets->verify_key, sizeof(secrets->verify_key),     
+            secrets->check_key, sizeof(secrets->check_key),   
+            &cached_sign_key,
+            ECTF_CURVE_ID 
+        );
+
+        if (ret != 0) return ret;
+        cached_sign_group_id = group_id;
+    }
+
+    // 2. Hash the raw input data (ECDSA signs a hash, not the raw text)
+    ret = wc_Sha256Hash(input, input_len, hash);
+    if (ret != 0) return ret;
+
+    // 3. Generate the ECDSA Signature
+    ret = wc_ecc_sign_hash(
+        hash, sizeof(hash), 
+        signature, sig_len, 
+        &global_rng, &cached_sign_key
+    );
+    
+    return ret; // 0 on success
 }
 
 int check_signature(uint16_t group_id, const uint8_t* input, uint32_t input_len, const uint8_t* signature, uint32_t sig_len) {
-    return 0;
+    static ecc_key cached_check_key;
+    static uint16_t cached_check_group_id = 0xFFFF;
+    
+    int ret;
+    int verify_status = 0;
+    uint8_t hash[WC_SHA256_DIGEST_SIZE];
+
+    if (init_crypto_engine() != 0) return -1;
+    if (!validate_permission(group_id, PERM_RECEIVE)) return PERMISSION_DENIED;
+
+    // 1. KEY CACHING LOGIC
+    if (group_id != cached_check_group_id) {
+        if (cached_check_group_id != 0xFFFF) wc_ecc_free(&cached_check_key);
+
+        const group_secrets_t* secrets = (const group_secrets_t*)get_group_secrets(group_id);
+        if (!secrets || secrets->check_key[0] == 0) return BAD_FUNC_ARG;
+
+        wc_ecc_init(&cached_check_key);
+
+        // Import the Group's Public check_key
+        ret = wc_ecc_import_x963_ex(
+            secrets->check_key, sizeof(secrets->check_key), 
+            &cached_check_key, ECTF_CURVE_ID
+        );
+        
+        if (ret != 0) return ret;
+        cached_check_group_id = group_id;
+    }
+
+    // 2. Hash the raw input data to compare against the signature
+    ret = wc_Sha256Hash(input, input_len, hash);
+    if (ret != 0) return ret;
+
+    // 3. Verify the ECDSA Signature
+    ret = wc_ecc_verify_hash(
+        signature, sig_len, 
+        hash, sizeof(hash), 
+        &verify_status, &cached_check_key
+    );
+    
+    if (ret != 0) {
+        return ret; // Crypto library error
+    }
+    
+    if (verify_status != 1) {
+        return -1; // Signature is INVALID (Tampered or wrong key)
+    }
+
+    return 0; // Signature is VALID
 }
 void secure_zero(void* v, size_t n)
 {

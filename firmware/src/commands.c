@@ -417,8 +417,6 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
             case RECEIVE_REQ_MSG: {
                 receive_req_t *req = (receive_req_t *)uart_buf;
                 receive_challenge_t chal;
-                
-                // THE FIX: Removed local file_t temp!
 
                 memset(&chal, 0, sizeof(chal));
                 chal.slot = req->slot;
@@ -433,9 +431,12 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
 
                 chal.group_id = workspace.file.group_id;
 
-                // TODO: real RNG later
-                for (int i = 0; i < NONCE_SIZE; i++) {
-                    chal.nonce[i] = (uint8_t)(i * 31u + (uint8_t)(chal.group_id & 0xFFu));
+                // Use the PRNG to generate a secure random nonce
+                if (generate_random_bytes(chal.nonce, NONCE_SIZE) != 0) {
+                    send_abort(req->slot, chal.group_id, RCV_ABORT_GENERIC);
+                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
+                    secure_zero(&workspace, sizeof(workspace));
+                    return 0;
                 }
 
                 pending_valid = true;
@@ -473,11 +474,17 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                     return -1;
                 }
 
-                // TODO: ECC VERIFY HERE (later)
+                // Verify the ECDSA signature against the pending nonce
+                if (check_signature(resp->group_id, pending_nonce, NONCE_SIZE, resp->sig, resp->sig_len) != 0) {
+                    pending_valid = false;
+                    send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
+                    print_error("RECEIVE: invalid signature");
+                    return -1;
+                }
 
                 pending_valid = false;
 
-                // THE FIX: Use workspace.recv_resp to assemble the packet
+                // Use workspace.recv_resp to assemble the packet
                 memset(&workspace, 0, sizeof(workspace));
                 
                 if (read_file(resp->slot, &workspace.recv_resp.file) < 0) {
