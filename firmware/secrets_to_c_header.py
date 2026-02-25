@@ -46,7 +46,7 @@ class Permission:
         # Format: GID=RWC (e.g., 1234=R--)
         group_id, perm_string = perms.split('=')
         perm_obj = cls(
-            int(group_id, 0), # Handle 0x prefix or decimal
+            int(group_id, 16),
             read = perm_string[0] == 'R',
             write = perm_string[1] == 'W',
             receive = perm_string[2] == 'C',
@@ -72,10 +72,15 @@ class PermissionList(list):
         ret = cls()
         if not perms:
             return ret
-        permissions_strings = perms.split(":")
+        
+        # Split the string by colons first
+        permissions_strings = perms.split(":") 
+        
+        # Parse each individual group
         for entry in permissions_strings:
             perm_obj = Permission.deserialize(entry)
             ret.append(perm_obj)
+            
         return ret
 
     def serialize(self):
