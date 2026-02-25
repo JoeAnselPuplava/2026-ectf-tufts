@@ -96,7 +96,7 @@ WOLFCRYPT_SOURCES=(
     # --- Add these for ECC ---
     asn.c       
     ecc.c
-    # coding.c 
+    coding.c 
     aes.c
     rsa.c
     tfm.c       # Fast math library required for ECC
@@ -104,23 +104,60 @@ WOLFCRYPT_SOURCES=(
     # hmac.c      # Required for HKDF
     wolfmath.c
     memory.c
+    # Speed up
+    sp_int.c
+    sp_c32.c
+    # sp_armthumb.c
 )
 
+# --- UPDATED CFLAGS ---
+# CFLAGS+=(
+#     -DUSE_FAST_MATH
+#     -DTFM_ECC256
+#     -DFP_MAX_BITS=512
+#     -DWOLFSSL_SMALL_STACK
+
+#     -DTFM_TIMING_RESISTANT     # Safety for timing attacks
+#     -DECC_TIMING_RESISTANT     # Ecc timing protection
+#     -DTFM_TIMING_RESISTANT     # Forces constant-time math operations
+
+#     -DWOLFCRYPT_ONLY           # Only build the wolfCrypt portion
+#     -DHAVE_ECC                 # Enable ECC support
+#     -DHAVE_COMP_KEY            # Enable Compressed (33-byte) Keys
+#     -DWOLFSSL_SECP256R1        # Explicitly enable P-256 Curve
+#     -DWOLFSSL_SHA256           # Ensure SHA256 is linked for KDF
+#     -DECC_TIMING_RESISTANT     # Recommended for security
+#     -DUSE_FAST_MATH            # Enables the 'tfm.c' math library
+#     -DTFM_ECC256               # Optimizes for the 256-bit curves used in eCTF
+#     -DSINGLE_THREADED          # Prevents reliance on pthreads.h
+#     -DNO_FILESYSTEM            # Prevents reliance on standard I/O
+#     -DNO_DEV_RANDOM            # You must provide your own TRNG seed
+#     -DWOLFSSL_USER_IO          # Allows you to define custom I/O if needed
+#     -DWC_NO_DEFAULT_DEVID      # Standard for embedded targets
+#     "-I/opt/wolfssl"           # Ensure the internal headers are reachable
+
+#     -DWOLFSSL_USER_SETTINGS
+
+#     -DWOLFSSL_AES_DIRECT
+#     -DCUSTOM_RAND_GENERATE_SEED_OS=my_trng_seed_gen
+#     "-includeboard_random.h"
+# )
 CFLAGS+=(
-    -DWOLFCRYPT_ONLY           # Only build the wolfCrypt portion
-    -DHAVE_ECC                 # Enable ECC support
-    -DECC_TIMING_RESISTANT     # Recommended for security
-    -DUSE_FAST_MATH            # Enables the 'tfm.c' math library
-    -DTFM_ECC256               # Optimizes for the 256-bit curves used in eCTF
-    -DSINGLE_THREADED          # Prevents reliance on pthreads.h
-    -DNO_FILESYSTEM            # Prevents reliance on standard I/O
-    -DNO_DEV_RANDOM            # You must provide your own TRNG seed
-    -DWOLFSSL_USER_IO          # Allows you to define custom I/O if needed
-    -DWC_NO_DEFAULT_DEVID      # Standard for embedded targets
-    "-I/opt/wolfssl"           # Ensure the internal headers are reachable
-    -DWOLFSSL_AES_DIRECT
-    -DCUSTOM_RAND_GENERATE_SEED_OS=wc_GenerateSeed
-    # -DCUSTOM_RAND_GENERATE_SEED=wc_GenerateSeed
+    # 1. Include Paths
+    "-I./inc"
+    "-I/opt/wolfssl"
+    
+    # 2. Enable User Settings
+    -DWOLFSSL_USER_SETTINGS
+    
+    # 3. FIX: Enable POSIX standards (Fixes 'strcasecmp' warning)
+    -D_POSIX_C_SOURCE=200809L
+    
+    # 4. FIX: Silence the 'deprecated' warning from WolfSSL internals
+    -Wno-deprecated-declarations
+    
+    # 5. Ensure your RNG prototype is seen everywhere
+    "-includeboard_random.h"
 )
 # CFLAGS+=("-I/opt/wolfssl")
 
@@ -155,6 +192,9 @@ function build() {
     # echo "These are permissions"
     # echo $PERMISSIONS
     python3 secrets_to_c_header.py "/secrets$GLOBAL_SECRETS" $HSM_PIN "$PERMISSIONS"
+    echo "Forcing clean build of WolfSSL..."
+    rm -f "$WOLFCRYPT_SRC"/*.o
+    rm -f "$WOLFSSL_DIR/wolfcrypt"/*.o
     # mkdir -p "$BUILDDIR/wolfcrypt"
     # echo "==========="
     # cd ../opt/wolfssl/

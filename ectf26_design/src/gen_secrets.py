@@ -16,9 +16,9 @@ from pathlib import Path
 
 from loguru import logger
 
-import secrets
-from py_ecc.bls.ciphersuites import G2ProofOfPossession
-
+# REPLACED: py_ecc with cryptography for SECP256R1
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import serialization
 
 def gen_secrets(groups: list[int]) -> bytes:
     """Generate the contents secrets file
@@ -40,17 +40,38 @@ def gen_secrets(groups: list[int]) -> bytes:
     glob_sec = {}
 
     for group in groups:
-        # Generate Keys
-        encode_seed = secrets.token_bytes(32)
-        verify_seed = secrets.token_bytes(32)
+        # --- Pair 1: Read (Private) / Write (Public) ---
+        # Generate a standard random SECP256R1 Private Key
+        priv_rw = ec.generate_private_key(ec.SECP256R1())
+        
+        # Extract Private Key (32-byte raw scalar)
+        read_key_bytes = priv_rw.private_numbers().private_value.to_bytes(32, byteorder='big')
+        
+        # Extract Public Key (33-byte compressed)
+        write_key_bytes = priv_rw.public_key().public_bytes(
+            encoding=serialization.Encoding.X962,
+            format=serialization.PublicFormat.UncompressedPoint # <--- CHANGED
+        )
 
-        read_key = G2ProofOfPossession.KeyGen(encode_seed)
-        write_key = G2ProofOfPossession.SkToPk(read_key).hex()
-        verify_key = G2ProofOfPossession.KeyGen(verify_seed)
-        check_key = G2ProofOfPossession.SkToPk(verify_key).hex()
+        # --- Pair 2: Verify (Private) / Check (Public) ---
+        priv_vc = ec.generate_private_key(ec.SECP256R1())
+        
+        verify_key_bytes = priv_vc.private_numbers().private_value.to_bytes(32, byteorder='big')
+        
+        check_key_bytes = priv_vc.public_key().public_bytes(
+            encoding=serialization.Encoding.X962,
+            format=serialization.PublicFormat.UncompressedPoint
+        )
 
-        # Add groups and secrets
-        glob_sec.update({group: [read_key, write_key, verify_key, check_key]})
+        # Add groups and secrets (Converted to Hex Strings)
+        glob_sec.update({
+            group: [
+                read_key_bytes.hex(), 
+                write_key_bytes.hex(), 
+                verify_key_bytes.hex(), 
+                check_key_bytes.hex()
+            ]
+        })
 
     # NOTE: if you choose to use JSON for your file type, you will not
     # be able to store binary data, and must either use a different file
@@ -90,8 +111,10 @@ def main():
     # Parse the command line arguments
     args = parse_args()
 
+    logger.debug(type(args.groups))
+    logger.debug(type(args.groups[0]))
     secrets = gen_secrets(args.groups)
-
+    logger.debug(type(secrets))
     # Print the generated secrets for your own debugging
     # Attackers will NOT have access to the output of this, but feel free to remove
     #

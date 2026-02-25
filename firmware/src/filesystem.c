@@ -10,12 +10,15 @@
  */
 
 #include <stdint.h>
+#include <stdio.h> 
+#include <stdlib.h>
 
 #include "filesystem.h"
 #include "simple_flash.h"
 #include "secrets.h"
+#include "security.h"
 #include "host_messaging.h"
-#include "random.h"
+#include "board_random.h"
 
 #include <wolfssl/wolfcrypt/settings.h>
 #include <wolfssl/wolfcrypt/rsa.h>
@@ -24,23 +27,101 @@
 #include <wolfssl/wolfcrypt/sha256.h>
 #include <wolfssl/wolfcrypt/hash.h>
 
+// Helper buffer for debug formatting
+static char dbg_buf[128];
+
 int load_fat() {
     flash_simple_read((uint32_t)_FLASH_FAT_START, FILE_ALLOCATION_TABLE, sizeof(FILE_ALLOCATION_TABLE));
     return 0;
 }
 
+extern void DL_Common_delayCycles(uint32_t cycles); 
+
 int store_fat() {
-    flash_simple_erase_page(_FLASH_FAT_START);
-    return flash_simple_write((uint32_t)_FLASH_FAT_START, FILE_ALLOCATION_TABLE, sizeof(FILE_ALLOCATION_TABLE));
+    // print_debug("FAT: Starting Erase...");
+    
+    // Force a massive delay to guarantee the UART buffer pushes the text out
+    // DL_Common_delayCycles(32000000); // roughly 1 second at 32MHz
+    
+    flash_simple_erase_page((uint32_t)_FLASH_FAT_START);
+
+    // print_debug("FAT: Erase survived. Starting Write...");
+    // DL_Common_delayCycles(32000000); 
+    
+    int ret = flash_simple_write((uint32_t)_FLASH_FAT_START, FILE_ALLOCATION_TABLE, sizeof(FILE_ALLOCATION_TABLE));
+    
+    // print_debug("FAT: Write survived!");
+    return ret;
+}
+
+int write_file(slot_t slot, file_t *src, uint8_t *uuid) {
+    unsigned int length, flash_addr;
+    if (slot < 0 || slot >= MAX_FILE_COUNT) {
+        return -1;
+    }
+    sprintf(dbg_buf, "write_file: Writing slot %d", slot);
+    print_debug(dbg_buf);
+
+    flash_addr = FILE_START_PAGE_FROM_SLOT(slot);
+    length = FILE_TOTAL_SIZE(src->contents_len);
+    
+    sprintf(dbg_buf, "FILE: Target Addr: 0x%08X, Pages: %d", flash_addr, FILE_PAGE_COUNT);
+    print_debug(dbg_buf);
+    
+    // Update FAT
+    memcpy(&FILE_ALLOCATION_TABLE[slot].uuid, uuid, UUID_SIZE);
+    FILE_ALLOCATION_TABLE[slot].flash_addr = flash_addr;
+    FILE_ALLOCATION_TABLE[slot].length = length;
+    
+    // 1. Store FAT (This function handles its own interrupts)
+    store_fat();
+    int pages_to_erase = (length + FLASH_PAGE_SIZE - 1) / FLASH_PAGE_SIZE;
+    sprintf(dbg_buf, "FILE: Target Addr: 0x%08X, Pages: %d", flash_addr, pages_to_erase);
+    print_debug(dbg_buf);
+
+    // 2. Erase File Pages safely
+    print_debug("FILE: Starting Erase loop...");
+    
+    // --- SHIELD UP ---
+    __disable_irq();
+
+    for (int i = 0; i < pages_to_erase; i++) {
+        flash_simple_erase_page(flash_addr + (FLASH_PAGE_SIZE * i));
+    }
+    __enable_irq(); 
+    // --- SHIELD DOWN ---
+
+    print_debug("FILE: Erase survived. Starting Write...");
+    
+    // 3. Write File safely
+    // --- SHIELD UP ---
+    __disable_irq();
+    int ret = flash_simple_write(flash_addr, src, length);
+    __enable_irq();
+    // --- SHIELD DOWN ---
+    
+    print_debug("FILE: Write survived!");
+    return ret;
 }
 
 int init_fs() {
+    print_debug("Initializing Filesystem...");
     return load_fat();
 }
 
 bool is_slot_in_use(slot_t slot) {
-    file_t temp_file;
-    return (!read_file(slot, &temp_file) && temp_file.in_use == FILE_IN_USE);
+    uint32_t in_use_flag = 0;
+    int flash_addr = FILE_ALLOCATION_TABLE[slot].flash_addr;
+
+    // If the FAT points to invalid memory, it's not in use
+    if (flash_addr <= 0 || flash_addr == 0xFFFFFFFF) {
+        return false;
+    }
+
+    // Read ONLY the first 4 bytes (the in_use flag) straight from flash
+    flash_simple_read(flash_addr, &in_use_flag, sizeof(in_use_flag));
+
+    return (in_use_flag == FILE_IN_USE);
 }
 
 // ============================================================================
@@ -48,7 +129,7 @@ bool is_slot_in_use(slot_t slot) {
 // ============================================================================
 
 #define AES_KEY_LEN 32      
-#define AES_BLOCK_SIZE 16   
+#define ECC_BLOB_RESERVED_SIZE 128
 
 // For CBC mode
 #define AES_IV_LEN 16
@@ -57,27 +138,10 @@ bool is_slot_in_use(slot_t slot) {
     #define WC_MGF1SHA256 26
 #endif
 
-/* ========================= Utilities ========================= */
-
-void secure_zero(void* v, size_t n)
-{
-    volatile uint32_t* p32 = (volatile uint32_t*)v;
-
-    // wipe 32-bit chunks
-    while (n >= sizeof(uint32_t)) {
-        *p32++ = 0;
-        n -= sizeof(uint32_t);
-    }
-
-    // wipe remaining bytes
-    volatile uint8_t* p8 = (volatile uint8_t*)p32;
-    while (n--) {
-        *p8++ = 0;
-    }
-}
 /* ========================= Crypto constants ========================= */
 
-#define PLAINTEXT_KEY_HDR_LEN (AES_KEY_LEN + AES_IV_LEN) /* key + iv */
+// Total Header = [Encrypted AES Key Blob (128)] + [IV (16)]
+#define TOTAL_HEADER_LEN (ECC_BLOB_RESERVED_SIZE + AES_IV_LEN)
 
 /* ========================= PKCS#7 padding ========================= */
 
@@ -95,17 +159,17 @@ static word32 add_pkcs7_padding(uint8_t* data, word32 data_len, word32 block_siz
 static int remove_pkcs7_padding(const uint8_t* data, word32 data_len, word32* out_len)
 {
     if (data_len == 0 || (data_len % AES_BLOCK_SIZE) != 0) {
-        return BAD_FUNC_ARG;
+        return -1;
     }
 
     uint8_t padding_len = data[data_len - 1];
     if (padding_len == 0 || padding_len > AES_BLOCK_SIZE) {
-        return BAD_PADDING_E;
+        return -1;
     }
 
     for (word32 i = 0; i < padding_len; i++) {
         if (data[data_len - 1 - i] != padding_len) {
-            return BAD_PADDING_E;
+            return -1;
         }
     }
 
@@ -121,11 +185,16 @@ static int aes_cbc_encrypt_direct(const uint8_t* key, const uint8_t* iv,
     Aes ctx;
     int ret;
 
-    if (!key || !iv || !in || !out || len == 0) return BAD_FUNC_ARG;
-    if (len % AES_BLOCK_SIZE) return BAD_FUNC_ARG;
+    print_debug("  > AES Encrypt Direct: Start");
+    if (!key || !iv || !in || !out || len == 0) return -1;
+    if (len % AES_BLOCK_SIZE) return -1;
 
     ret = wc_AesSetKey(&ctx, key, AES_KEY_LEN, NULL, AES_ENCRYPTION);
-    if (ret != 0) return ret;
+    if (ret != 0) {
+        sprintf(dbg_buf, "  > AES SetKey failed: %d", ret);
+        print_debug(dbg_buf);
+        return ret;
+    }
 
     uint8_t prev[AES_BLOCK_SIZE];
     memcpy(prev, iv, AES_BLOCK_SIZE);
@@ -142,7 +211,7 @@ static int aes_cbc_encrypt_direct(const uint8_t* key, const uint8_t* iv,
 
         memcpy(prev, out + i, AES_BLOCK_SIZE);
     }
-
+    print_debug("  > AES Encrypt Direct: Success");
     return 0;
 }
 
@@ -152,11 +221,20 @@ static int aes_cbc_decrypt_direct(const uint8_t* key, const uint8_t* iv,
     Aes ctx;
     int ret;
 
-    if (!key || !iv || !in || !out || len == 0) return BAD_FUNC_ARG;
-    if (len % AES_BLOCK_SIZE) return BAD_FUNC_ARG;
+    print_debug("  > AES Decrypt Direct: Start");
+
+    if (!key || !iv || !in || !out || len == 0) return -1;
+    if (len % AES_BLOCK_SIZE) {
+        print_debug("  > AES Decrypt Error: Bad block alignment");
+        return -1;
+    }
 
     ret = wc_AesSetKey(&ctx, key, AES_KEY_LEN, NULL, AES_DECRYPTION);
-    if (ret != 0) return ret;
+    if (ret != 0) {
+        sprintf(dbg_buf, "  > AES SetKey failed: %d", ret);
+        print_debug(dbg_buf);
+        return ret;
+    }
 
     uint8_t prev[AES_BLOCK_SIZE];
     memcpy(prev, iv, AES_BLOCK_SIZE);
@@ -164,12 +242,8 @@ static int aes_cbc_decrypt_direct(const uint8_t* key, const uint8_t* iv,
     for (word32 i = 0; i < len; i += AES_BLOCK_SIZE) {
         uint8_t plain_block[AES_BLOCK_SIZE];
 
-        print_debug("Decrypting block");
-
         ret = wc_AesDecryptDirect(&ctx, plain_block, in + i);
         if (ret != 0) return ret;
-
-        print_debug("Decrypted block");
 
         for (word32 j = 0; j < AES_BLOCK_SIZE; j++) {
             out[i + j] = plain_block[j] ^ prev[j];
@@ -178,6 +252,7 @@ static int aes_cbc_decrypt_direct(const uint8_t* key, const uint8_t* iv,
         memcpy(prev, in + i, AES_BLOCK_SIZE);
     }
 
+    print_debug("  > AES Decrypt Direct: Success");
     return 0;
 }
 
@@ -190,81 +265,116 @@ int create_file(
     uint16_t contents_len,
     uint8_t *contents_plain
 ) {
+    static WC_RNG rng __attribute__((aligned(8)));
     int ret;
-    WC_RNG rng;
 
+    sprintf(dbg_buf, "create_file: Creating file '%s' for Group ID 0x%04X", name, group_id);
+    print_debug(dbg_buf);
+
+    /* 1. Validate Arguments */
     if (!dest || !name || (!contents_plain && contents_len != 0)) {
-        return BAD_FUNC_ARG;
+        print_debug("create_file: Bad Arguments");
+        return -1;
     }
-    // print_debug("Creating file: group_id=%u, name=%s, contents_len=%u", group_id, name, contents_len);
 
     memset(dest, 0, sizeof(file_t));
     dest->in_use = FILE_IN_USE;
-    dest->group_id = group_id;
+    dest->group_id = group_id; 
     strncpy(dest->name, name, MAX_NAME_SIZE - 1);
     dest->name[MAX_NAME_SIZE - 1] = '\0';
 
     if (contents_len > MAX_CONTENTS_SIZE) {
-        return BUFFER_E;
+        print_debug("create_file: Buffer Overflow Error");
+        return -1;
     }
 
-    /* Generate random AES key + IV */
-    print_debug("Generating random AES key and IV");
+   /* 2. Generate Random AES Key and IV */
+    print_debug("create_file: Generating random AES key and IV");
+
     uint8_t aes_key[AES_KEY_LEN];
     uint8_t iv[AES_IV_LEN];
 
-    print_debug("RNG: init...");
-    ret = mspm0_trng_seed(aes_key, sizeof(aes_key));
-    if (ret != 0) return ret;
-
-    ret = mspm0_trng_seed(iv, sizeof(iv));
-    if (ret != 0) return ret;
-
-    char dbg[80];
-    snprintf(dbg, sizeof(dbg), "k0=%08lx k1=%08lx",
-            (unsigned long)(*(uint32_t*)&aes_key[0]),
-            (unsigned long)(*(uint32_t*)&aes_key[4]));
-    print_debug(dbg);
-
-    print_debug("AES key and IV generated successfully");
-
-
-    /* Pad plaintext */
-    uint8_t padded_plain[MAX_CONTENTS_SIZE];
-    memcpy(padded_plain, contents_plain, contents_len);
-    word32 padded_len = add_pkcs7_padding(padded_plain, contents_len, AES_BLOCK_SIZE);
-
-    /* Layout: [aes_key][iv][ciphertext] */
-    const uint32_t overhead = PLAINTEXT_KEY_HDR_LEN;
-
-    if (overhead + padded_len > sizeof(dest->contents)) {
-        secure_zero(aes_key, sizeof(aes_key));
-        secure_zero(padded_plain, sizeof(padded_plain));
-        return BUFFER_E;
+    // Use the safe, global RNG wrapper!
+    if (generate_random_bytes(aes_key, sizeof(aes_key)) != 0) {
+        print_debug("create_file: RNG Gen Key failed");
+        return -1;
     }
 
+    if (generate_random_bytes(iv, sizeof(iv)) != 0) {
+        print_debug("create_file: RNG Gen IV failed");
+        secure_zero(aes_key, sizeof(aes_key));
+        return -1;
+    }
+
+
+    /* 3. Encrypt AES Key using Group's Public Write Key */
+    print_debug("create_file: Encrypting AES Key with Group Public Key...");
+    
+    uint8_t encrypted_key_blob[ECC_BLOB_RESERVED_SIZE]; 
+    uint32_t blob_actual_len = sizeof(encrypted_key_blob);
+    
+    print_debug("ECIES Encryption of the Random AES Key");
+    ret = encrypt_data(group_id, aes_key, AES_KEY_LEN, encrypted_key_blob, &blob_actual_len);
+    
+    if (ret != 0) {
+        sprintf(dbg_buf, "create_file: encrypt_data failed with error %d", ret);
+        print_debug(dbg_buf);
+        secure_zero(aes_key, sizeof(aes_key));
+        return ret;
+    }
+    
+    sprintf(dbg_buf, "create_file: Key Encrypted. Blob size: %d bytes", (int)blob_actual_len);
+    print_debug(dbg_buf);
+
+    if (blob_actual_len > ECC_BLOB_RESERVED_SIZE) {
+        print_debug("create_file: ECC Blob too large for header!");
+        secure_zero(aes_key, sizeof(aes_key));
+        return -1;
+    }
+
+    /* 4 & 5. Check Capacity and Calculate Padding */
+    print_debug("create_file: Padding plaintext content directly in buffer...");
+    
+    uint32_t pad_val = AES_BLOCK_SIZE - (contents_len % AES_BLOCK_SIZE);
+    uint32_t padded_len = contents_len + pad_val;
+    const uint32_t overhead = ECC_BLOB_RESERVED_SIZE + AES_IV_LEN;
+
+    if (overhead + padded_len > sizeof(dest->contents)) {
+        print_debug("create_file: Total file size exceeds storage capacity");
+        secure_zero(aes_key, sizeof(aes_key));
+        return -1;
+    }
+
+    /* 6. Write Header and Encrypt In-Place */
+    print_debug("create_file: Writing Header and Encrypting Body...");
     uint8_t* p = dest->contents;
 
-    print_debug("Storing AES key and IV in file header");
+    memset(p, 0, ECC_BLOB_RESERVED_SIZE);
+    memcpy(p, encrypted_key_blob, blob_actual_len);
+    p += ECC_BLOB_RESERVED_SIZE;
 
-    /* Store AES key (plaintext) */
-    memcpy(p, aes_key, AES_KEY_LEN);
-    p += AES_KEY_LEN;
-
-    /* Store IV */
     memcpy(p, iv, AES_IV_LEN);
     p += AES_IV_LEN;
 
-    /* Encrypt into remaining space */
-    ret = aes_cbc_encrypt_direct(aes_key, iv, padded_plain, p, padded_len);
+    // Zero-RAM in-place encryption
+    memcpy(p, contents_plain, contents_len);
+    for (uint32_t i = 0; i < pad_val; i++) {
+        p[contents_len + i] = (uint8_t)pad_val;
+    }
 
-    /* Note: we must not zeroize aes_key before encryption completes */
+    ret = aes_cbc_encrypt_direct(aes_key, iv, p, p, padded_len);
+
+    /* 7. Cleanup Sensitive Data */
     secure_zero(aes_key, sizeof(aes_key));
-    secure_zero(padded_plain, sizeof(padded_plain));
 
-    if (ret != 0) return ret;
+    if (ret != 0) {
+        print_debug("create_file: Body encryption failed");
+        return ret;
+    }
 
     dest->contents_len = (uint16_t)(overhead + padded_len);
+    
+    print_debug("create_file: File creation successful.");
     return 0;
 }
 
@@ -275,106 +385,143 @@ int decrypt_file_contents(
     uint8_t* out_plain,
     uint16_t* out_plain_len
 ) {
-    (void)group_id;
     (void)name;
+    int ret;
+
+    sprintf(dbg_buf, "decrypt_file: Decrypting file for Group ID 0x%04X", group_id);
+    print_debug(dbg_buf);
 
     if (!src || !out_plain || !out_plain_len) {
-        return BAD_FUNC_ARG;
+        return -1;
     }
 
-    if (src->contents_len < PLAINTEXT_KEY_HDR_LEN) {
-        return BUFFER_E;
+    if (src->contents_len < TOTAL_HEADER_LEN) {
+        print_debug("decrypt_file: File too short to contain header");
+        return -1;
     }
 
-    const uint8_t* aes_key = src->contents;
-    const uint8_t* iv = src->contents + AES_KEY_LEN;
-    const uint8_t* ciphertext = src->contents + PLAINTEXT_KEY_HDR_LEN;
-    const word32 ciphertext_len = (word32)src->contents_len - PLAINTEXT_KEY_HDR_LEN;
+    /* Pointers into the file buffer */
+    const uint8_t* key_blob = src->contents;
+    const uint8_t* iv = src->contents + ECC_BLOB_RESERVED_SIZE;
+    const uint8_t* ciphertext = src->contents + TOTAL_HEADER_LEN;
+    const word32 ciphertext_len = (word32)src->contents_len - TOTAL_HEADER_LEN;
+
+    sprintf(dbg_buf, "decrypt_file: Ciphertext length: %d", (int)ciphertext_len);
+    print_debug(dbg_buf);
 
     if (ciphertext_len == 0 || (ciphertext_len % AES_BLOCK_SIZE) != 0) {
-        return BAD_FUNC_ARG;
+        print_debug("decrypt_file: Invalid ciphertext length (not block aligned)");
+        return -1;
     }
 
-    if (*out_plain_len < ciphertext_len) {
-        return BUFFER_E;
-    }
-
-    uint8_t padded_plain[MAX_CONTENTS_SIZE];
-    if (ciphertext_len > MAX_CONTENTS_SIZE) {
-        return BUFFER_E;
-    }
-
-    print_debug("Starting AES Decrypt");
-    int ret = aes_cbc_decrypt_direct(aes_key, iv, ciphertext, padded_plain, ciphertext_len);
-    if (ret != 0) {
-        secure_zero(padded_plain, sizeof(padded_plain));
-        return ret;
-    }
-    print_debug("Finished AES decrypt");
+    /* 1. Decrypt the AES Key Blob using Group Private Key */
+    print_debug("decrypt_file: Recovering AES Key from ECC Blob...");
     
-    print_debug("Removing PKCS#7 padding");
-    word32 actual_len = 0;
-    ret = remove_pkcs7_padding(padded_plain, ciphertext_len, &actual_len);
+    uint8_t decrypted_aes_key[AES_KEY_LEN];
+    uint32_t decrypted_key_len = sizeof(decrypted_aes_key);
+
+    // THE FIX: Only pass the true size of the ECIES blob (113 bytes)
+    // 65 (PubKey) + 16 (IV) + 32 (Ciphertext) = 113
+    uint32_t actual_blob_size = 65 + AES_IV_SIZE + AES_KEY_LEN; 
+
+    ret = decrypt_data(group_id, key_blob, actual_blob_size, decrypted_aes_key, &decrypted_key_len);
+
     if (ret != 0) {
-        secure_zero(padded_plain, sizeof(padded_plain));
+        sprintf(dbg_buf, "decrypt_file: Failed to decrypt AES key (Error %d).", ret);
+        print_debug(dbg_buf);
         return ret;
     }
 
-    print_debug("Copying plaintext to output buffer");
-    char dbg[32];
-    sprintf(dbg, "Actual length: %lu", (unsigned long)actual_len);
-    print_debug(dbg);
-    memcpy(out_plain, padded_plain, actual_len);
-    *out_plain_len = (uint16_t)actual_len;
-    print_debug("Copied plaintext to output buffer");
+    if (decrypted_key_len != AES_KEY_LEN) {
+        sprintf(dbg_buf, "decrypt_file: Decrypted key wrong size (%d expected %d)", (int)decrypted_key_len, AES_KEY_LEN);
+        print_debug(dbg_buf);
+        secure_zero(decrypted_aes_key, sizeof(decrypted_aes_key));
+        return -1;
+    }
 
-    sprintf(dbg, "Padded plain length: %lu", (unsigned long)sizeof(padded_plain));
-    print_debug(dbg);
-    secure_zero(padded_plain, ciphertext_len);   // only wipe the bytes we touched
-    print_debug("Returning 0");
+    print_debug("decrypt_file: AES Key recovered. Decrypting body...");
+
+    /* 2. Decrypt the Body directly into 'out_plain' */
+    if (*out_plain_len < ciphertext_len) {
+        print_debug("decrypt_file: Output buffer too small");
+        secure_zero(decrypted_aes_key, sizeof(decrypted_aes_key));
+        return -1;
+    }
+
+    ret = aes_cbc_decrypt_direct(decrypted_aes_key, iv, ciphertext, out_plain, ciphertext_len);
+    secure_zero(decrypted_aes_key, sizeof(decrypted_aes_key));
+
+    if (ret != 0) {
+        print_debug("decrypt_file: Body decryption failed");
+        return ret;
+    }
+    
+    /* 3. Remove Padding in-place */
+    print_debug("decrypt_file: Removing Padding...");
+    word32 actual_len = 0;
+    
+    ret = remove_pkcs7_padding(out_plain, ciphertext_len, &actual_len);
+    print_debug("out_plan");
+    print_debug((char *)out_plain);
+    if (ret != 0) {
+        print_debug("decrypt_file: Padding check failed");
+        secure_zero(out_plain, ciphertext_len); 
+        return ret;
+    }
+
+    /* 4. Copy to Output */
+    *out_plain_len = (uint16_t)actual_len;
+    secure_zero(out_plain + actual_len, ciphertext_len - actual_len);
+    
+    sprintf(dbg_buf, "decrypt_file: Success. Size: %d", (int)actual_len);
+    print_debug(dbg_buf);
     return 0;
 }
 
-/** @brief Create a new file object in memory
- *
- *  @param slot The slot to write the file to
- *  @param src The sourc file to store
- *  @param uuid The UUID to store in the FAT
- *
- * @return 0 upon success. A negative value otherwise.
-*/
-int write_file(slot_t slot, file_t *src, uint8_t *uuid) {
-    unsigned int length, flash_addr;
+// int write_file(slot_t slot, file_t *src, uint8_t *uuid) {
+//     unsigned int length, flash_addr;
 
-    flash_addr = FILE_START_PAGE_FROM_SLOT(slot);
-    length = FILE_TOTAL_SIZE(src->contents_len);
-    // Update the FAT for the new file
-    memcpy(&FILE_ALLOCATION_TABLE[slot].uuid, uuid, UUID_SIZE);
-    FILE_ALLOCATION_TABLE[slot].flash_addr = flash_addr;
-    FILE_ALLOCATION_TABLE[slot].length = length;
-    store_fat();
+//     sprintf(dbg_buf, "write_file: Writing slot %d", slot);
+//     print_debug(dbg_buf);
 
-    // erase the pages that will store the file
-    for (int i = 0; i < FILE_PAGE_COUNT; i++) {
-        flash_simple_erase_page(flash_addr + (FLASH_PAGE_SIZE * i));
-    }
+//     flash_addr = FILE_START_PAGE_FROM_SLOT(slot);
+//     length = FILE_TOTAL_SIZE(src->contents_len);
+    
+//     // Update the FAT for the new file
+//     memcpy(&FILE_ALLOCATION_TABLE[slot].uuid, uuid, UUID_SIZE);
+//     FILE_ALLOCATION_TABLE[slot].flash_addr = flash_addr;
+//     FILE_ALLOCATION_TABLE[slot].length = length;
+    
+//     // store_fat() handles its own interrupts
+//     store_fat();
 
-    // now write the file
-    return flash_simple_write(FILE_ALLOCATION_TABLE[slot].flash_addr, src, length);
-}
+//     // 1. Disable interrupts for the main file write!
+//     __disable_irq();
 
-/** @brief Read a file from persistent storage into memory
- *
- *  @param slot The slot to read
- *  @param dest The destination address to store the file
- *
- * @return 0 upon success. A negative value otherwise.
-*/
+//     // Erase the pages that will store the file
+//     for (int i = 0; i < FILE_PAGE_COUNT; i++) {
+//         flash_simple_erase_page(flash_addr + (FLASH_PAGE_SIZE * i));
+//     }
+
+//     // Now write the file
+//     int ret = flash_simple_write(FILE_ALLOCATION_TABLE[slot].flash_addr, src, length);
+    
+//     // 2. Re-enable interrupts
+//     __enable_irq();
+
+//     return ret;
+// }
+
 int read_file(slot_t slot, file_t *dest) {
     int flash_addr, file_size;
 
+    if (slot < 0 || slot >= MAX_FILE_COUNT) {
+        return -1;
+    }
+    
     flash_addr = FILE_ALLOCATION_TABLE[slot].flash_addr;
     file_size = FILE_ALLOCATION_TABLE[slot].length;
+
     if (flash_addr < 0 || file_size < 0) {
         return -1;
     }
@@ -383,12 +530,6 @@ int read_file(slot_t slot, file_t *dest) {
     return 0;
 }
 
-/** @brief Get a read-only pointer to a file's metadata
- *
- *  @param slot The slot to get metadata for
- *
- * @return A filesystem_entry_t * on success. NULL on error.
-*/
 const filesystem_entry_t *get_file_metadata(slot_t slot) {
     return &FILE_ALLOCATION_TABLE[slot];
 }

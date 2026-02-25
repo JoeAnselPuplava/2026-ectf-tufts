@@ -22,4 +22,4 @@ global.secrets:
 	docker run --rm -v ./firmware:/hsm -v ./global.secrets:/secrets/global.secrets:ro -v ./$@:/out -e HSM_PIN=${PIN} -e PERMISSIONS='${PERMS}' build-hsm $(BUILDDIR)
 
 clean:
-	rm -rfI *.hsm/ global.secrets
+	rm -rfI build *.hsm/ global.secrets

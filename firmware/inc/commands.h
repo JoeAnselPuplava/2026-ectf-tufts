@@ -30,6 +30,11 @@ typedef unsigned char pin_t[6];
 // calculates the length of a list packet based on the number of files listed
 #define LIST_PKT_LEN(num_files) (sizeof(num_files) + ((MAX_NAME_SIZE + sizeof(group_id_t) + sizeof(slot_t)) * num_files))
 
+#define NONCE_SIZE 16
+#define SIG_MAX_BYTES 80  // placeholder for DER ECDSA P-256 signature size
+
+#define RCV_ABORT_GENERIC 1
+
 #pragma pack(push, 1) // Tells the compiler not to pad the struct members
 // for more information on what struct padding does, see:
 // https://www.gnu.org/software/c-intro-and-ref/manual/html_node/Structure-Layout.html
@@ -86,6 +91,34 @@ typedef struct {
 typedef struct {
     pin_t pin;
 } interrogate_command_t;
+
+// RECEIVE STRUCTS:
+
+typedef struct {
+    slot_t slot;
+} receive_req_t;
+
+typedef struct {
+    slot_t slot;
+    group_id_t group_id;
+    uint8_t nonce[NONCE_SIZE];
+} receive_challenge_t;
+
+typedef struct {
+    slot_t slot;
+    group_id_t group_id;
+    uint8_t nonce[NONCE_SIZE];
+
+    // TODO: ECC signature added later
+    uint16_t sig_len;
+    uint8_t sig[SIG_MAX_BYTES];
+} receive_chalresp_t;
+
+typedef struct {
+    slot_t slot;       // optional context (can set to 0xFF if you want)
+    group_id_t group;  // optional context (can set to 0xFFFF if unknown)
+    uint8_t reason;    // optional
+} receive_abort_t;
 
 /**********************************************************
  ******************** RESPONSE STRUCTS ********************
