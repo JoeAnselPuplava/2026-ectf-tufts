@@ -54,7 +54,6 @@ void validate_list_files(list_response_t *file_list, list_response_t *validated_
 
     for (uint8_t i = 0; i < file_list->n_files; i++) {
         for (uint8_t j = 0; j < MAX_PERMS; j++) { // TODO: replace MAX_PERMS with perm size if time cutdown needed 
-            // check that file group and permission group match 
             if (file_list->metadata[i].group_id == perms->permissions[j].group_id) {
                 // verify that requesting HSM has receive permission 
                 if (perms->permissions[j].receive) {
@@ -252,7 +251,7 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
 int interrogate(uint16_t pkt_len, uint8_t *buf) {
     interrogate_command_t *command = (interrogate_command_t*)buf;
     interrogate_request_t request; 
-    uint8_t *enc_request; 
+    uint8_t *enc_request[AES_IV_SIZE + REQUEST_PADDED_SIZE]; 
     msg_type_t cmd;
     list_response_t final_list_buf;
     uint16_t len_recv_msg;
@@ -267,6 +266,7 @@ int interrogate(uint16_t pkt_len, uint8_t *buf) {
 
     // zeroize the buffers we will use
     memset(&request, 0, sizeof(request));
+    memset(enc_request, 0, sizeof(enc_request));
 
     // gather all permissions 
     memcpy(&request.permissions, &global_permissions, sizeof(group_permission_t) * MAX_PERMS);
@@ -275,7 +275,7 @@ int interrogate(uint16_t pkt_len, uint8_t *buf) {
     encrypt_perms(&request, enc_request);
 
     // request the file list from the neighboring device
-    write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, enc_request, sizeof(enc_request));
+    write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, enc_request, ((AES_IV_SIZE + REQUEST_PADDED_SIZE) * sizeof(uint8_t)));
 
     // set essentially no limit to the receive message size
     len_recv_msg = 0xffff;
@@ -298,11 +298,11 @@ int interrogate(uint16_t pkt_len, uint8_t *buf) {
  * @return 0 upon success. A negative value on error.
 */
 int listen(uint16_t pkt_len, uint8_t *buf) {
-    uint8_t uart_buf[sizeof(receive_request_t)];
+    uint8_t uart_buf[sizeof(receive_request_t) + ((AES_IV_SIZE + REQUEST_PADDED_SIZE) * sizeof(uint8_t))];
     msg_type_t cmd;
     pkt_len_t write_length, read_length;
-    interrogate_request_t *inter_req; 
-    uint8_t *enc_request; 
+    interrogate_request_t inter_req; 
+    uint8_t *enc_request[AES_IV_SIZE + REQUEST_PADDED_SIZE];
     list_response_t file_list;
     list_response_t validated_file_list; 
     receive_request_t *command;
@@ -317,9 +317,14 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
 
     switch (cmd) {
         case INTERROGATE_MSG:
+            // zeroize the buffers we will use
+            memset(&inter_req, 0, sizeof(inter_req));
+            memset(enc_request, 0, sizeof(enc_request));
+
             // get the request 
-            enc_request = (uint8_t *)uart_buf; 
-            decrypt_perms(inter_req, enc_request);
+            // enc_request = (uint8_t *)uart_buf; 
+            memcpy(enc_request, (uint8_t *)uart_buf, sizeof(enc_request));
+            decrypt_perms(&inter_req, enc_request);
 
             // zeroize the buffers we will use
             memset(&file_list, 0, sizeof(file_list));
@@ -329,7 +334,7 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
             generate_list_files(&file_list);
 
             // check every file against the provided permission list on return only files with receive perms 
-            validate_list_files(&file_list, &validated_file_list, inter_req);
+            validate_list_files(&file_list, &validated_file_list, &inter_req);
 
             // send the list of files on this device
             write_length = LIST_PKT_LEN(validated_file_list.n_files);
@@ -370,5 +375,3 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
     write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
     return 0;
 }
-
-

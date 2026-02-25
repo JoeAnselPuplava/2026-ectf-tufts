@@ -15,9 +15,18 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <wolfssl/wolfcrypt/aes.h>
 
 #define MAX_PERMS 8
 #define PIN_LENGTH 6
+
+#define AES_BLOCK_SIZE           16
+#define AES_KEY_SIZE             32
+
+#define PERM_SERIALIZED_SIZE      5
+#define REQUEST_SERIALIZED_SIZE  (MAX_PERMS * PERM_SERIALIZED_SIZE)
+#define REQUEST_PAD_LEN          (AES_BLOCK_SIZE - (REQUEST_SERIALIZED_SIZE % AES_BLOCK_SIZE))
+#define REQUEST_PADDED_SIZE      (REQUEST_SERIALIZED_SIZE + REQUEST_PAD_LEN)
 
 typedef enum {
     PERM_READ = 'R',
@@ -31,6 +40,10 @@ typedef struct {
     bool write;
     bool receive;
 } group_permission_t;
+
+typedef struct {
+    group_permission_t permissions[MAX_PERMS];
+} interrogate_request_t; 
 
 /** @brief Validate a pin against the HSM's pin
  *
@@ -48,5 +61,9 @@ bool check_pin(unsigned char *pin);
  *  @return True if the HSM has the correct permission. False if not.
 */
 bool validate_permission(uint16_t group_id, permission_enum_t perm);
+
+uint8_t encrypt_perms(interrogate_request_t *request, uint8_t *enc_request); 
+
+uint8_t decrypt_perms(interrogate_request_t *request, uint8_t *enc_request); 
 
 #endif  // __SECURITY_H__

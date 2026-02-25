@@ -87,10 +87,6 @@ typedef struct {
     pin_t pin;
 } interrogate_command_t;
 
-typedef struct {
-    group_permission_t permissions[MAX_PERMS];
-} interrogate_request_t; 
-
 /**********************************************************
  ******************** RESPONSE STRUCTS ********************
  **********************************************************/

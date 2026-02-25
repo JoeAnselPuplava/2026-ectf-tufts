@@ -18,15 +18,6 @@
 #include <wolfssl/wolfcrypt/aes.h>
 #include <wolfssl/wolfcrypt/random.h>
 
-#define AES_BLOCK_SIZE           16
-#define AES_KEY_SIZE             32
-#define AES_IV_SIZE              16
-
-#define PERM_SERIALIZED_SIZE      5
-#define REQUEST_SERIALIZED_SIZE  (MAX_PERMS * PERM_SERIALIZED_SIZE)
-#define REQUEST_PAD_LEN          (AES_BLOCK_SIZE - (REQUEST_SERIALIZED_SIZE % AES_BLOCK_SIZE))
-#define REQUEST_PADDED_SIZE      (REQUEST_SERIALIZED_SIZE + REQUEST_PAD_LEN)
-
 bool check_pin(unsigned char *pin) {
     print_debug("Checking PIN\n");
 
@@ -124,18 +115,18 @@ static void deserialize_permission(const uint8_t *in, group_permission_t *perm) 
 }
 
 static void serialize_request(uint8_t *buffer, interrogate_request_t *req) {
-    uint8_t offset = 0;
+    uint32_t offset = 0;
 
-    for (uint8_t i = 0; i < MAX_PERMS; i++) {
+    for (uint32_t i = 0; i < MAX_PERMS; i++) {
         serialize_permission(&buffer[offset], &req->permissions[i]);
         offset += PERM_SERIALIZED_SIZE;
     }
 }
 
 static void deserialize_request(const uint8_t *buffer, interrogate_request_t *req) {
-    uint8_t offset = 0;
+    uint32_t offset = 0;
 
-    for (uint8_t i = 0; i < MAX_PERMS; i++) {
+    for (uint32_t i = 0; i < MAX_PERMS; i++) {
         deserialize_permission(&buffer[offset],
                                &req->permissions[i]);
         offset += PERM_SERIALIZED_SIZE;
@@ -143,7 +134,7 @@ static void deserialize_request(const uint8_t *buffer, interrogate_request_t *re
 }
 
 static void pad_request(uint8_t *buffer) {
-    for (uint8_t i = 0; i < REQUEST_PAD_LEN; i++)
+    for (uint32_t i = 0; i < REQUEST_PAD_LEN; i++)
         buffer[REQUEST_SERIALIZED_SIZE + i] = REQUEST_PAD_LEN; 
 }
 
@@ -158,6 +149,9 @@ uint8_t encrypt_perms(interrogate_request_t *request, uint8_t *enc_request) {
         0x1f,0x35,0x2c,0x07,0x3b,0x61,0x08,0xd7,
         0x2d,0x98,0x10,0xa3,0x09,0x14,0xdf,0xf4
     };
+
+    // zeroize the buffers we will use
+    memset(padded, 0, sizeof(padded));
 
     // create iv 
     // uncomment after everything is merged and can access generate_random_bytes
@@ -187,6 +181,7 @@ uint8_t encrypt_perms(interrogate_request_t *request, uint8_t *enc_request) {
 
     // free everything 
     wc_AesFree(&aes);
+
     return ret; 
 }
 
@@ -202,6 +197,10 @@ uint8_t decrypt_perms(interrogate_request_t *request, uint8_t *enc_request) {
         0x2d,0x98,0x10,0xa3,0x09,0x14,0xdf,0xf4
     };
 
+    // zeroize the buffers we will use
+    memset(decrypted, 0, sizeof(decrypted));
+    memset(iv, 0, sizeof(iv));
+
     // initialize aes 
     ret = wc_AesInit(&aes, NULL, INVALID_DEVID);
     if (ret != 0) return ret;
@@ -212,7 +211,7 @@ uint8_t decrypt_perms(interrogate_request_t *request, uint8_t *enc_request) {
     memcpy(iv, enc_request, AES_IV_SIZE);
 
     // set the key 
-    ret = wc_AesSetKey(&aes, key, AES_KEY_SIZE, iv, AES_ENCRYPTION);
+    ret = wc_AesSetKey(&aes, key, AES_KEY_SIZE, iv, AES_DECRYPTION);
     if (ret != 0) return ret;
 
     // decrypt the data 
@@ -221,10 +220,9 @@ uint8_t decrypt_perms(interrogate_request_t *request, uint8_t *enc_request) {
 
     wc_AesFree(&aes);
 
-    // deserialize (unpadding not needed because all sizeds are constant)
-    deserialize_request(decrypted, request);
+    // deserialize (unpadding not needed because all sizes are constant)
+    deserialize_request(decrypted, request);   
 
     return 0; 
 }
-
 
