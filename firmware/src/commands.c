@@ -245,8 +245,8 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     write_packet(TRANSFER_INTERFACE, RECEIVE_REQ_MSG, &req, sizeof(req));
 
     // 2) Read challenge
-    len_recv_msg = 0xffff;
-    read_packet(TRANSFER_INTERFACE, &cmd, &chal, &len_recv_msg);
+    len_recv_msg = 0;
+    read_packet(TRANSFER_INTERFACE, &cmd, &chal, &len_recv_msg, sizeof(chal));
 
     if (cmd == RECEIVE_ABORT_MSG) {
         print_error("RECEIVE: peer aborted");
@@ -288,10 +288,10 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     write_packet(TRANSFER_INTERFACE, RECEIVE_CHALRESP_MSG, &resp, sizeof(resp));
 
     // 5) Listener sends back the file
-    len_recv_msg = 0xffff;
+    len_recv_msg = 0x0;
     
     // THE FIX: Read directly into the workspace union
-    read_packet(TRANSFER_INTERFACE, &cmd, &workspace.recv_resp, &len_recv_msg);
+    read_packet(TRANSFER_INTERFACE, &cmd, &workspace.recv_resp, &len_recv_msg, sizeof(workspace.recv_resp));
 
     if (cmd == RECEIVE_ABORT_MSG) {
         print_error("RECEIVE: peer aborted");
@@ -382,7 +382,7 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
         read_length = sizeof(uart_buf);
         memset(uart_buf, 0, sizeof(uart_buf));
 
-        if (read_packet(TRANSFER_INTERFACE, &cmd, uart_buf, &read_length) != MSG_OK) {
+        if (read_packet(TRANSFER_INTERFACE, &cmd, uart_buf, &read_length, sizeof(uart_buf)) != MSG_OK) {
             print_error("LISTEN: read_packet failed");
             send_abort(pending_slot, pending_group, RCV_ABORT_GENERIC);
             return -1;
