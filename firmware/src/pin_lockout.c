@@ -1,3 +1,11 @@
+/**
+ * @file    pin_lockout.c
+ * @author  Ming Dynasty
+ * @brief   Lockout mechanism for incorrect PIN attempts
+ * @date    2026
+ *
+ * @copyright Copyright (c) 2026 Tufts University. All rights reserved.
+ */
 #include "pin_lockout.h"
 #include "simple_flash.h"
 #include "host_messaging.h"

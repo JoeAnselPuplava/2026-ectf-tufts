@@ -1,12 +1,8 @@
 /**
  * @file security.h
- * @author Samuel Meyers
+ * @author Ming Dynasty
  * @brief Header for security checks and secret management
  * @date 2026
- *
- * This source file is part of an example system for MITRE's 2026 Embedded CTF (eCTF).
- * This code is being provided only for educational purposes for the 2026 MITRE eCTF competition,
- * and may not meet MITRE standards for quality. Use this code at your own risk!
  *
  * @copyright Copyright (c) 2026 The MITRE Corporation
  */

@@ -1,12 +1,10 @@
 /**
  * @file filesystem.c
- * @author Samuel Meyers (Ultra-compatible version)
+ * @author Ming Dynasty
  * @brief eCTF flash-based filesystem management
  * @date 2026
  *
- * This version uses ONLY the most basic WolfSSL functions available in all builds
- *
- * @copyright Copyright (c) 2026 The MITRE Corporation
+ * @copyright Copyright (c) 2026 Tufts University. All rights reserved.
  */
 
 #include <stdint.h>
