@@ -31,11 +31,10 @@
 static char dbg_buf[128];
 
 int load_fat() {
-    // print_debug("Loading FAT from flash...");
     flash_simple_read((uint32_t)_FLASH_FAT_START, FILE_ALLOCATION_TABLE, sizeof(FILE_ALLOCATION_TABLE));
-    // print_debug("FAT Loaded.");
     return 0;
 }
+
 extern void DL_Common_delayCycles(uint32_t cycles); 
 
 int store_fat() {
