@@ -1,8 +1,10 @@
 /**
- * @file security.c
- * @author Samuel Meyers
- * @brief Implementation of security checks and crypto operations
- * @date 2026
+ * @file    security.c
+ * @author  Ming Dynasty
+ * @brief   Crypto functions for HSM
+ * @date    2026
+ *
+ * @copyright Copyright (c) 2026 Tufts University. All rights reserved.
  */
 
 #include <stdio.h> 

@@ -1,3 +1,11 @@
+/**
+ * @file    board_random.c
+ * @author  Ming Dynasty
+ * @brief   Hardware random number generation for the HSM
+ * @date    2026
+ *
+ * @copyright Copyright (c) 2026 Tufts University. All rights reserved.
+ */
 #include "ti_msp_dl_config.h"
 #include "board_random.h"
 #include <host_messaging.h>
