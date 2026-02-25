@@ -76,13 +76,13 @@ void flash_simple_read(uint32_t address, void* buffer, uint32_t size) {
 int flash_simple_write(uint32_t address, void* buffer, uint32_t size) {
     volatile DL_FLASHCTL_COMMAND_STATUS cmdStatus;
     DL_FlashCTL_executeClearStatus(FLASHCTL);
-    DL_FlashCTL_unprotectSector(FLASHCTL, address, DL_FLASHCTL_REGION_SELECT_MAIN);
-
+    
     uint32_t bytes_written = 0;
     uint8_t* byte_buf = (uint8_t*)buffer;
-
+    
     // Loop through the buffer in safe, fixed-size chunks
     while (bytes_written < size) {
+        DL_FlashCTL_unprotectSector(FLASHCTL, address, DL_FLASHCTL_REGION_SELECT_MAIN);
         // Allocate a fixed 256-byte chunk on the stack and pad with 0xFF
         uint32_t chunk[FLASH_CHUNK_SIZE / 4];
         memset(chunk, 0xFF, sizeof(chunk));

@@ -37,11 +37,13 @@ extern void DL_Common_delayCycles(uint32_t cycles);
 
 int store_fat() {
     // print_debug("FAT: Starting Erase...");
-    
+    __disable_irq();
     // Force a massive delay to guarantee the UART buffer pushes the text out
     // DL_Common_delayCycles(32000000); // roughly 1 second at 32MHz
     
     flash_simple_erase_page((uint32_t)_FLASH_FAT_START);
+    
+    __enable_irq();
 
     // print_debug("FAT: Erase survived. Starting Write...");
     // DL_Common_delayCycles(32000000); 

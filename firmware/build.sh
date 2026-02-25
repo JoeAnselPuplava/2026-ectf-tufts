@@ -93,6 +93,7 @@ WOLFCRYPT_SOURCES=(
     cryptocb.c
     sha.c
     sha256.c
+    cmac.c
     # --- Add these for ECC ---
     asn.c       
     ecc.c

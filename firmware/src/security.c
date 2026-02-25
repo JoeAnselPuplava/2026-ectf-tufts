@@ -12,6 +12,7 @@
 #include "security.h"
 #include "secrets.h"
 #include "host_messaging.h"
+#include "board_random.h"
 
 // WolfSSL Includes
 #include <wolfssl/wolfcrypt/sha256.h>
@@ -20,7 +21,7 @@
 #include <wolfssl/wolfcrypt/random.h>
 #include <wolfssl/wolfcrypt/aes.h>
 #include <wolfssl/wolfcrypt/hash.h>
-#include "board_random.h"
+#include <wolfssl/wolfcrypt/cmac.h>
 
 static char dbg_buf[128];
 
@@ -438,30 +439,22 @@ uint8_t encrypt_perms(interrogate_request_t *request, uint8_t *enc_request) {
     int ret; 
     Aes aes; 
     uint8_t padded[REQUEST_SERIALIZED_SIZE + AES_BLOCK_SIZE];
-    uint8_t iv[AES_IV_SIZE] = { 0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f};
-    const byte key[AES_KEY_SIZE] = {
-        0x60,0x3d,0xeb,0x10,0x15,0xca,0x71,0xbe,
-        0x2b,0x73,0xae,0xf0,0x85,0x7d,0x77,0x81,
-        0x1f,0x35,0x2c,0x07,0x3b,0x61,0x08,0xd7,
-        0x2d,0x98,0x10,0xa3,0x09,0x14,0xdf,0xf4
-    };
+    uint8_t iv[AES_IV_SIZE];
 
     // zeroize the buffers we will use
     memset(padded, 0, sizeof(padded));
 
     // create iv 
     // uncomment after everything is merged and can access generate_random_bytes
-    // ret = generate_random_bytes(iv, AES_IV_SIZE);
-    // if (ret != 0) return ret;
+    ret = generate_random_bytes(iv, AES_IV_SIZE);
+    if (ret != 0) return ret;
 
     // initialize aes 
     ret = wc_AesInit(&aes, NULL, INVALID_DEVID);
     if (ret != 0) return ret;
 
-    // TODO: get the key from global secrets 
-
     // set the key 
-    ret = wc_AesSetKey(&aes, key, AES_KEY_SIZE, iv, AES_ENCRYPTION);
+    ret = wc_AesSetKey(&aes, GLOBAL_AES_KEY, AES_KEY_SIZE, iv, AES_ENCRYPTION);
     if (ret != 0) return ret;
 
     // convert and pad request 
@@ -486,12 +479,6 @@ uint8_t decrypt_perms(interrogate_request_t *request, uint8_t *enc_request) {
     Aes aes; 
     uint8_t decrypted[REQUEST_SERIALIZED_SIZE + AES_BLOCK_SIZE];
     uint8_t iv[AES_IV_SIZE]; 
-    const byte key[AES_KEY_SIZE] = {
-        0x60,0x3d,0xeb,0x10,0x15,0xca,0x71,0xbe,
-        0x2b,0x73,0xae,0xf0,0x85,0x7d,0x77,0x81,
-        0x1f,0x35,0x2c,0x07,0x3b,0x61,0x08,0xd7,
-        0x2d,0x98,0x10,0xa3,0x09,0x14,0xdf,0xf4
-    };
 
     // zeroize the buffers we will use
     memset(decrypted, 0, sizeof(decrypted));
@@ -501,13 +488,12 @@ uint8_t decrypt_perms(interrogate_request_t *request, uint8_t *enc_request) {
     ret = wc_AesInit(&aes, NULL, INVALID_DEVID);
     if (ret != 0) return ret;
 
-    // TODO: get the key from global secrets 
 
     // extract the iv from the buffer
     memcpy(iv, enc_request, AES_IV_SIZE);
 
     // set the key 
-    ret = wc_AesSetKey(&aes, key, AES_KEY_SIZE, iv, AES_DECRYPTION);
+    ret = wc_AesSetKey(&aes, GLOBAL_AES_KEY, AES_KEY_SIZE, iv, AES_DECRYPTION);
     if (ret != 0) return ret;
 
     // decrypt the data 
@@ -596,4 +582,67 @@ int generate_random_bytes(uint8_t *output, uint32_t length) {
     }
     
     return 0;
+}
+int sign_data_cmac(uint16_t group_id, const uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t* sig_len) {
+    Cmac cmac;
+    int ret;
+    word32 outLen = WC_AES_BLOCK_SIZE; // Use standard AES block size (16 bytes)
+
+    if (init_crypto_engine() != 0) return -1;
+    if (!validate_permission(group_id, PERM_RECEIVE)) return PERMISSION_DENIED;
+
+    // Retrieve the symmetric key. For CMAC, we will repurpose the 32-byte verify_key 
+    // as our shared AES-256 symmetric key.
+    const group_secrets_t* secrets = (const group_secrets_t*)get_group_secrets(group_id);
+    if (!secrets || secrets->verify_key[0] == 0) return BAD_FUNC_ARG;
+
+    // Initialize CMAC with AES-256
+    ret = wc_InitCmac(&cmac, secrets->verify_key, 32, WC_CMAC_AES, NULL);
+    if (ret != 0) return ret;
+
+    // Update the CMAC with the input data
+    ret = wc_CmacUpdate(&cmac, input, input_len);
+    if (ret != 0) {
+        secure_zero(&cmac, sizeof(cmac));
+        return ret;
+    }
+
+    // Generate the final 16-byte MAC
+    ret = wc_CmacFinal(&cmac, signature, &outLen);
+    if (ret == 0) {
+        *sig_len = (uint32_t)outLen;
+    }
+
+    // Clean up
+    secure_zero(&cmac, sizeof(cmac));
+    return ret; 
+}
+
+int check_signature_cmac(uint16_t group_id, const uint8_t* input, uint32_t input_len, const uint8_t* signature, uint32_t sig_len) {
+    uint8_t expected_mac[WC_AES_BLOCK_SIZE];
+    uint32_t expected_mac_len = WC_AES_BLOCK_SIZE;
+    int ret;
+
+    if (init_crypto_engine() != 0) return -1;
+    if (!validate_permission(group_id, PERM_RECEIVE)) return PERMISSION_DENIED;
+
+    // Fast fail: AES-CMAC must always be exactly 16 bytes
+    if (sig_len != WC_AES_BLOCK_SIZE) {
+        print_debug("check_signature_cmac: Invalid CMAC length");
+        return -1; 
+    }
+
+    // To verify a MAC, we just re-calculate it locally using the exact same data and key
+    ret = sign_data_cmac(group_id, input, input_len, expected_mac, &expected_mac_len);
+    if (ret != 0) return ret;
+
+    // Use constant-time comparison to prevent timing side-channel attacks!
+    if (!constant_time_compare(expected_mac, signature, WC_AES_BLOCK_SIZE)) {
+        print_debug("check_signature_cmac: CMAC mismatch (Tampered or Wrong Key)!");
+        secure_zero(expected_mac, sizeof(expected_mac));
+        return -1; 
+    }
+
+    secure_zero(expected_mac, sizeof(expected_mac));
+    return 0; // Signature is VALID
 }

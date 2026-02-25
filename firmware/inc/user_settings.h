@@ -39,6 +39,7 @@
 #define WOLFSSL_SECP256R1       // Enable NIST P-256 Curve
 #define WOLFSSL_SHA256          // Enable SHA-256
 #define WOLFSSL_AES_DIRECT      // Enable AES-CBC Direct Access
+#define WOLFSSL_CMAC
 
 /* -------------------------------------------------------------------------
  * RNG Configuration (Bypass DRBG entirely)

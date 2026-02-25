@@ -12,6 +12,7 @@ Copyright: Copyright (c) 2026 The MITRE Corporation
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 from loguru import logger
@@ -63,13 +64,18 @@ def gen_secrets(groups: list[int]) -> bytes:
             format=serialization.PublicFormat.UncompressedPoint
         )
 
+        # --- AES Key ---
+        # Generate a 32-byte (256-bit) symmetric key for AES
+        global_aes_key_bytes = os.urandom(32)
+        glob_sec["GLOBAL_AES_KEY"] = global_aes_key_bytes.hex()
+
         # Add groups and secrets (Converted to Hex Strings)
         glob_sec.update({
             group: [
                 read_key_bytes.hex(), 
                 write_key_bytes.hex(), 
                 verify_key_bytes.hex(), 
-                check_key_bytes.hex()
+                check_key_bytes.hex(),
             ]
         })
 

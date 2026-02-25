@@ -271,7 +271,6 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
         print_error("RECEIVE: expected challenge");
         return -1;
     }
-
     if (chal.slot != command->read_slot) {
         send_abort(command->read_slot, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
         print_error("RECEIVE: challenge slot mismatch");
@@ -283,6 +282,25 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
+    // --- NEW: Verify the AES-CMAC from the List HSM ---
+    uint8_t context_buf[sizeof(slot_t) + sizeof(group_id_t) + NONCE_SIZE];
+    uint32_t offset = 0;
+    
+    memcpy(context_buf + offset, &chal.slot, sizeof(slot_t));
+    offset += sizeof(slot_t);
+    
+    memcpy(context_buf + offset, &chal.group_id, sizeof(group_id_t));
+    offset += sizeof(group_id_t);
+    
+    memcpy(context_buf + offset, chal.nonce, NONCE_SIZE);
+    offset += NONCE_SIZE;
+
+    if (check_signature_cmac(chal.group_id, context_buf, offset, chal.mac, 16) != 0) {
+        send_abort(chal.slot, chal.group_id, RCV_ABORT_GENERIC);
+        print_error("RECEIVE: invalid challenge CMAC. Oracle attack prevented!");
+        return -1;
+    }
+
     // 3) Local permission check
     if (!has_receive_permission(chal.group_id)) {
         send_abort(chal.slot, chal.group_id, RCV_ABORT_GENERIC);
@@ -290,14 +308,19 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
-    // 4) Build challenge response (ECC sign TODO)
+    // 4) Build challenge response using Asymmetric ECC Sign
     resp.slot = chal.slot;
     resp.group_id = chal.group_id;
     memcpy(resp.nonce, chal.nonce, NONCE_SIZE);
 
-    // TODO: ECC SIGN HERE (later)
-    resp.sig_len = 0;
-    memset(resp.sig, 0, sizeof(resp.sig));
+    resp.sig_len = ECC_SIG_SIZE; // defined as 80 in security.h
+    // Note: To match your diagram's E_ECC(Nonce), we only sign the nonce here 
+    // using the original ECDSA `sign_data` function.
+    if (sign_data(chal.group_id, chal.nonce, NONCE_SIZE, resp.sig, &resp.sig_len) != 0) {
+        send_abort(chal.slot, chal.group_id, RCV_ABORT_GENERIC);
+        print_error("RECEIVE: ECC sign failed");
+        return -1;
+    }
 
     write_packet(TRANSFER_INTERFACE, RECEIVE_CHALRESP_MSG, &resp, sizeof(resp));
 
@@ -471,6 +494,27 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
 
                 // Use the PRNG to generate a secure random nonce
                 if (generate_random_bytes(chal.nonce, NONCE_SIZE) != 0) {
+                    send_abort(req->slot, chal.group_id, RCV_ABORT_GENERIC);
+                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
+                    secure_zero(&workspace, sizeof(workspace));
+                    return 0;
+                }
+
+                // --- NEW: Generate AES-CMAC over (Slot + Group ID + Nonce) ---
+                uint8_t context_buf[sizeof(slot_t) + sizeof(group_id_t) + NONCE_SIZE];
+                uint32_t offset = 0;
+                
+                memcpy(context_buf + offset, &chal.slot, sizeof(slot_t));
+                offset += sizeof(slot_t);
+                
+                memcpy(context_buf + offset, &chal.group_id, sizeof(group_id_t));
+                offset += sizeof(group_id_t);
+                
+                memcpy(context_buf + offset, chal.nonce, NONCE_SIZE);
+                offset += NONCE_SIZE;
+
+                uint32_t mac_len = 16;
+                if (sign_data_cmac(chal.group_id, context_buf, offset, chal.mac, &mac_len) != 0) {
                     send_abort(req->slot, chal.group_id, RCV_ABORT_GENERIC);
                     write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     secure_zero(&workspace, sizeof(workspace));

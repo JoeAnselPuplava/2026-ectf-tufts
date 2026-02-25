@@ -116,6 +116,28 @@ uint8_t encrypt_perms(interrogate_request_t *request, uint8_t *enc_request);
 
 uint8_t decrypt_perms(interrogate_request_t *request, uint8_t *enc_request); 
 
+/** * @brief Generates an AES-CMAC authentication tag.
+ * Requires PERM_RECEIVE.
+ * @param group_id The group ID to use.
+ * @param input Pointer to data to sign.
+ * @param input_len Length of input data.
+ * @param signature Pointer to buffer for the MAC.
+ * @param sig_len In: Size of sig buffer. Out: Bytes written (always 16 for AES).
+ * @return 0 on success, non-zero on error.
+ */
+int sign_data_cmac(uint16_t group_id, const uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t* sig_len);
+
+/** * @brief Verifies an AES-CMAC authentication tag.
+ * Requires PERM_RECEIVE.
+ * @param group_id The group ID to use.
+ * @param input Pointer to the original data.
+ * @param input_len Length of input data.
+ * @param signature Pointer to the MAC to verify.
+ * @param sig_len Length of the MAC (must be 16).
+ * @return 0 if MAC is VALID, non-zero if INVALID or error.
+ */
+int check_signature_cmac(uint16_t group_id, const uint8_t* input, uint32_t input_len, const uint8_t* signature, uint32_t sig_len);
+
 void secure_zero(void* v, size_t n);
 int init_crypto_engine(void);
 int generate_random_bytes(uint8_t *output, uint32_t length);

@@ -99,6 +99,11 @@ def secrets_to_c_header(
     # Hash the PIN
     h = hashlib.sha256(hsm_pin.encode("utf-8")).digest()
     
+    # Extract Global AES Key
+    global_aes_hex = secrets_dict.get("GLOBAL_AES_KEY", "")
+    if not global_aes_hex:
+        print("Warning: GLOBAL_AES_KEY not found in secrets file.")
+    
     # Track which groups we actually found secrets for
     found_groups = set()
 
@@ -115,6 +120,10 @@ def secrets_to_c_header(
         f.write(", ".join(f"0x{b:02x}" for b in h))
         f.write("\n};\n\n")
 
+        # Write Global AES Key
+        f.write("// Global System AES-128 Key\n")
+        f.write(f"static const uint8_t GLOBAL_AES_KEY[32] = {_format_key_as_c_array(global_aes_hex, included=True)};\n\n")
+
         # Write Struct Definition for SECP256R1
         f.write("// SECP256R1 Keys derived from gen_secrets.py\n")
         f.write("typedef struct {\n")
@@ -124,12 +133,11 @@ def secrets_to_c_header(
         f.write("    uint8_t check_key[65];  // Public Key (Uncompressed)\n")
         f.write("} group_secrets_t;\n\n")
 
-        # Iterate permissions to generate secret definitions
-        # Note: keys in secrets_dict are strings (e.g. "1234"), but permissions use ints
-        # We need to normalize lookups.
-        
         # Create a lookup map for secrets where keys are integers
-        normalized_secrets = {int(k): v for k, v in secrets_dict.items()}
+        # Ignore the "GLOBAL_AES_KEY" string key here
+        normalized_secrets = {
+            int(k): v for k, v in secrets_dict.items() if k != "GLOBAL_AES_KEY"
+        }
 
         for perm in permissions:
             gid = perm.group_id
