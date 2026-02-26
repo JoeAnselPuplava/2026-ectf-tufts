@@ -239,8 +239,6 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     receive_req_t req;
     receive_challenge_t chal;
     receive_chalresp_t resp;
-    
-    // THE FIX: Removed local receive_response_t recv_resp!
 
     if (!check_pin(command->pin)) {
         wrong_pin_lockout_init();
@@ -283,6 +281,26 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
+    // --- Verify the AES-CMAC from the Listen HSM ---
+    uint8_t context_buf[sizeof(slot_t) + sizeof(group_id_t) + NONCE_SIZE];
+    uint32_t offset = 0;
+    
+    memcpy(context_buf + offset, &chal.slot, sizeof(slot_t));
+    offset += sizeof(slot_t);
+    
+    memcpy(context_buf + offset, &chal.group_id, sizeof(group_id_t));
+    offset += sizeof(group_id_t);
+    
+    memcpy(context_buf + offset, chal.nonce, NONCE_SIZE);
+    offset += NONCE_SIZE;
+
+    // Verify the MAC from the Listener to prevent Oracle attacks
+    if (check_signature_cmac(chal.group_id, context_buf, offset, chal.mac, 16) != 0) {
+        send_abort(chal.slot, chal.group_id, RCV_ABORT_GENERIC);
+        print_error("RECEIVE: invalid challenge CMAC. Oracle attack prevented!");
+        return -1;
+    }
+
     // 3) Local permission check
     if (!has_receive_permission(chal.group_id)) {
         send_abort(chal.slot, chal.group_id, RCV_ABORT_GENERIC);
@@ -290,21 +308,27 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
-    // 4) Build challenge response (ECC sign TODO)
+    // 4) Build challenge response using Asymmetric ECC Sign
     resp.slot = chal.slot;
     resp.group_id = chal.group_id;
     memcpy(resp.nonce, chal.nonce, NONCE_SIZE);
 
-    // TODO: ECC SIGN HERE (later)
-    resp.sig_len = 0;
-    memset(resp.sig, 0, sizeof(resp.sig));
+    // Initializing the buffer size before passing it to the signer
+    resp.sig_len = ECC_SIG_SIZE; 
+    
+    // Sign the Nonce using the group's private Verify Key
+    if (sign_data(chal.group_id, chal.nonce, NONCE_SIZE, resp.sig, &resp.sig_len) != 0) {
+        send_abort(chal.slot, chal.group_id, RCV_ABORT_GENERIC);
+        print_error("RECEIVE: ECC sign failed");
+        return -1;
+    }
 
     write_packet(TRANSFER_INTERFACE, RECEIVE_CHALRESP_MSG, &resp, sizeof(resp));
 
-    // 5) Listener sends back the file
+    // 5) Listener sends back the encrypted file
     len_recv_msg = 0x0;
     
-    // THE FIX: Read directly into the workspace union
+    // Read directly into the workspace union
     read_packet(TRANSFER_INTERFACE, &cmd, &workspace.recv_resp, &len_recv_msg, sizeof(workspace.recv_resp));
 
     if (cmd == RECEIVE_ABORT_MSG) {
@@ -317,7 +341,7 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
-    // THE FIX: Write the file from the workspace union
+    // Write the file from the workspace union into persistent flash
     if (write_file(command->write_slot, &workspace.recv_resp.file, workspace.recv_resp.uuid) < 0) {
         send_abort(resp.slot, resp.group_id, RCV_ABORT_GENERIC);
         print_error("Writing received file failed");
@@ -412,7 +436,7 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
     for (int attempts = 0; attempts < LISTEN_MAX_ATTEMPTS; attempts++) {
         read_length = sizeof(uart_buf);
         memset(uart_buf, 0, sizeof(uart_buf));
-
+        print_debug("LISTENING FOR PACKET");
         if (read_packet(TRANSFER_INTERFACE, &cmd, uart_buf, &read_length, sizeof(uart_buf)) != MSG_OK) {
             print_error("LISTEN: read_packet failed");
             send_abort(pending_slot, pending_group, RCV_ABORT_GENERIC);
@@ -478,20 +502,55 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                     return 0;
                 }
 
+                // --- Generate AES-CMAC over (Slot + Group ID + Nonce) ---
+                uint8_t context_buf[sizeof(slot_t) + sizeof(group_id_t) + NONCE_SIZE];
+                uint32_t offset = 0;
+                
+                memcpy(context_buf + offset, &chal.slot, sizeof(slot_t));
+                offset += sizeof(slot_t);
+                
+                memcpy(context_buf + offset, &chal.group_id, sizeof(group_id_t));
+                offset += sizeof(group_id_t);
+                
+                memcpy(context_buf + offset, chal.nonce, NONCE_SIZE);
+                offset += NONCE_SIZE;
+
+                uint32_t mac_len = 16;
+                if (sign_data_cmac(chal.group_id, context_buf, offset, chal.mac, &mac_len) != 0) {
+                    send_abort(req->slot, chal.group_id, RCV_ABORT_GENERIC);
+                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
+                    secure_zero(&workspace, sizeof(workspace));
+                    return 0;
+                }
+
                 pending_valid = true;
                 pending_slot = chal.slot;
                 pending_group = chal.group_id;
                 memcpy(pending_nonce, chal.nonce, NONCE_SIZE);
-
+                print_debug("ABOUT TO WRITE PACKET");
                 write_packet(TRANSFER_INTERFACE, RECEIVE_CHAL_MSG, &chal, sizeof(chal));
+                print_debug("WROTE PACKET");
                 
                 // Clean up workspace before breaking to next message
                 secure_zero(&workspace, sizeof(workspace));
-                break; 
-            }
 
-            case RECEIVE_CHALRESP_MSG: {
-                receive_chalresp_t *resp = (receive_chalresp_t *)uart_buf;
+                // === WAIT FOR CHALLENGE RESPONSE ===
+                read_length = sizeof(uart_buf);
+                if (read_packet(TRANSFER_INTERFACE, &cmd, uart_buf, &read_length, sizeof(uart_buf)) != MSG_OK) {
+                    print_error("RECEIVE: read_packet failed waiting for challenge response");
+                    send_abort(pending_slot, pending_group, RCV_ABORT_GENERIC);
+                    return -1;
+                }
+
+                // FIX: Cast to receive_chalresp_t, NOT receive_challenge_t!
+                receive_chalresp_t *resp = (receive_chalresp_t *) uart_buf;
+                
+                // FIX: Wait for RECEIVE_CHALRESP_MSG, not RECEIVE_CHAL_MSG!
+                if (cmd != RECEIVE_CHALRESP_MSG) {
+                    print_error("DIDN'T RECEIVE CHALLENGE RESPONSE PACKET");
+                    send_abort(pending_slot, pending_group, RCV_ABORT_GENERIC);
+                    return -1;
+                }
 
                 if (!pending_valid) {
                     send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
@@ -523,6 +582,7 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
 
                 pending_valid = false;
 
+                // === ASSEMBLE FILE AND SEND ===
                 // Use workspace.recv_resp to assemble the packet
                 memset(&workspace, 0, sizeof(workspace));
                 

@@ -98,6 +98,7 @@ typedef struct {
     slot_t slot;
     group_id_t group_id;
     uint8_t nonce[NONCE_SIZE];
+    uint8_t mac[16]; // NEW: Holds the AES-CMAC tag to prevent oracle attacks
 } receive_challenge_t;
 
 typedef struct {
