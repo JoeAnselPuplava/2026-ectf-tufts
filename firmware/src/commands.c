@@ -58,22 +58,29 @@ void generate_list_files(list_response_t *file_list) {
     secure_zero(&workspace.file, sizeof(workspace.file)); 
 }
 
-void validate_list_files(list_response_t *file_list, list_response_t *validated_file_list, interrogate_request_t *perms) {
-    validated_file_list->n_files = 0; 
+void validate_list_files(list_response_t *file_list, interrogate_request_t *perms) {
+    file_list->n_files = 0; 
 
-    for (uint8_t i = 0; i < file_list->n_files; i++) {
-        for (uint8_t j = 0; j < MAX_PERMS; j++) { // TODO: replace MAX_PERMS with perm size if time cutdown needed 
-            if (file_list->metadata[i].group_id == perms->permissions[j].group_id) {
-                // verify that requesting HSM has receive permission 
-                if (perms->permissions[j].receive) {
-                    validated_file_list->metadata[validated_file_list->n_files].slot = file_list->metadata[i].slot;
-                    validated_file_list->metadata[validated_file_list->n_files].group_id = file_list->metadata[i].group_id;
-                    strcpy(validated_file_list->metadata[validated_file_list->n_files].name, file_list->metadata[i].name); // TODO: come replace strcpy
-                    validated_file_list->n_files++; 
+    for (uint8_t i = 0; i < MAX_FILE_COUNT; i++) {
+        // Check if the file is in use
+        if (is_slot_in_use(i)) {
+            // THE FIX: Use the global buffer instead of a local variable
+            read_file(i, &workspace.file);
+
+            for (uint8_t j = 0; j < MAX_PERMS; j++) { 
+                if (workspace.file.group_id == perms->permissions[j].group_id) {
+                    if (perms->permissions[j].receive) {
+                        file_list->metadata[file_list->n_files].slot = i;
+                        file_list->metadata[file_list->n_files].group_id = workspace.file.group_id;
+                        strcpy(file_list->metadata[file_list->n_files].name, (char *)&workspace.file.name);
+                        file_list->n_files++;
+                    }
                 }
             }
         }
     }
+    // Clean up when done
+    secure_zero(&workspace.file, sizeof(workspace.file)); 
 }
 
 /**********************************************************
@@ -419,7 +426,6 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
 
     interrogate_request_t inter_req; 
     uint8_t *enc_request[AES_IV_SIZE + REQUEST_PADDED_SIZE];
-    list_response_t file_list;
     list_response_t validated_file_list; 
 
     const filesystem_entry_t *metadata;
@@ -460,14 +466,10 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                 decrypt_perms(&inter_req, enc_request);
 
                 // zeroize the buffers we will use
-                memset(&file_list, 0, sizeof(file_list));
                 memset(&validated_file_list, 0, sizeof(validated_file_list));
 
-                // generate a list of files for the other device
-                generate_list_files(&file_list);
-
                 // check every file against the provided permission list on return only files with receive perms 
-                validate_list_files(&file_list, &validated_file_list, &inter_req);
+                validate_list_files(&validated_file_list, &inter_req);
 
                 // send the list of files on this device
                 write_length = LIST_PKT_LEN(validated_file_list.n_files);
