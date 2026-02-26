@@ -79,7 +79,7 @@ int mspm0_trng_seed(byte* output, word32 sz)
         for (int i = 0; i < 4 && generated < sz; i++) {
             output[generated++] = (byte)(w >> (8 * i));
         }
-        print_debug(output);
+        // print_debug(output);
 
         /* Some MSPM0 variants require retriggering */
         //DL_TRNG_sendCommand(TRNG, DL_TRNG_CMD_GEN_RANDOM);

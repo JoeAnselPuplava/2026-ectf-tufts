@@ -462,7 +462,7 @@ int decrypt_file_contents(
     
     ret = remove_pkcs7_padding(out_plain, ciphertext_len, &actual_len);
     print_debug("out_plan");
-    print_debug((char *)out_plain);
+    // print_debug((char *)out_plain);
     if (ret != 0) {
         print_debug("decrypt_file: Padding check failed");
         secure_zero(out_plain, ciphertext_len); 

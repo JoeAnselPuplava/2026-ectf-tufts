@@ -291,7 +291,7 @@ cleanup:
     return ret;
 }
 
-// TODO: Implement sign_data and check_signature later
+
 int sign_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t* sig_len) {
     static ecc_key cached_sign_key;
     static uint16_t cached_sign_group_id = 0xFFFF;
