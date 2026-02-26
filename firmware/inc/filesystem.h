@@ -64,6 +64,13 @@ static filesystem_entry_t FILE_ALLOCATION_TABLE[MAX_FILE_COUNT];
  *********** END FUNCTIONALLY DEFINED ELEMENTS ************
  **********************************************************/
 
+/* Encryption overhead: 128 (ECC key blob) + 16 (IV) = 144 bytes */
+#define ENCRYPTION_OVERHEAD 144 
+
+/* MAX_CONTENTS_SIZE must be at least (MAX_PLAINTEXT_SIZE + ENCRYPTION_OVERHEAD + padding) */
+/* 8192 + 144 + 16 (max padding) = 8352. We'll use 8400 for safety. */
+#undef MAX_CONTENTS_SIZE
+#define MAX_CONTENTS_SIZE 8400
 
 /*
 The new secure design allocates files for each slot right before the FAT:

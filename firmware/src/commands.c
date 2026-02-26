@@ -13,6 +13,10 @@
 #include "security.h"
 #include "pin_lockout.h"
 
+// This union ensures we only ever use 8KB of RAM instead of 16KB
+// static file_t shared_file __attribute__((aligned(8)));
+// static receive_response_t shared_recv_resp __attribute__((aligned(8)));
+// static read_response_t shared_read_resp __attribute__((aligned(8)));
 typedef union {
     file_t file;
     read_response_t read_resp;
@@ -20,22 +24,19 @@ typedef union {
 } shared_workspace_t;
 
 static shared_workspace_t workspace __attribute__((aligned(8)));
-
-// Moved large list structs off the stack to prevent overflows
-static list_response_t file_list_buf;
-static list_response_t validated_file_list_buf;
-
 #define LISTEN_MAX_ATTEMPTS 4
+
+
 
 /**********************************************************
  ******************** HELPER FUNCTIONS ********************
  **********************************************************/
 
 /** @brief List out the files on the system.
- * To be utilized by list and interrogate
+ *      To be utilized by list and interrogate
  *
- * @param file_list A pointer to the list_response_t variable in
- * which to store the results
+ *  @param file_list A pointer to the list_response_t variable in
+ *      which to store the results
  */
 void generate_list_files(list_response_t *file_list) {
     file_list->n_files = 0;
@@ -44,7 +45,7 @@ void generate_list_files(list_response_t *file_list) {
     for (uint8_t i = 0; i < MAX_FILE_COUNT; i++) {
         // Check if the file is in use
         if (is_slot_in_use(i)) {
-            // Use the global buffer instead of a local variable
+            // THE FIX: Use the global buffer instead of a local variable
             read_file(i, &workspace.file);
 
             file_list->metadata[file_list->n_files].slot = i;
@@ -58,17 +59,16 @@ void generate_list_files(list_response_t *file_list) {
 }
 
 void validate_list_files(list_response_t *file_list, list_response_t *validated_file_list, interrogate_request_t *perms) {
-    // 1. Correctly target the output list to reset its count to 0
     validated_file_list->n_files = 0; 
 
     for (uint8_t i = 0; i < file_list->n_files; i++) {
-        for (uint8_t j = 0; j < MAX_PERMS; j++) { 
+        for (uint8_t j = 0; j < MAX_PERMS; j++) { // TODO: replace MAX_PERMS with perm size if time cutdown needed 
             if (file_list->metadata[i].group_id == perms->permissions[j].group_id) {
                 // verify that requesting HSM has receive permission 
                 if (perms->permissions[j].receive) {
                     validated_file_list->metadata[validated_file_list->n_files].slot = file_list->metadata[i].slot;
                     validated_file_list->metadata[validated_file_list->n_files].group_id = file_list->metadata[i].group_id;
-                    strcpy(validated_file_list->metadata[validated_file_list->n_files].name, file_list->metadata[i].name); 
+                    strcpy(validated_file_list->metadata[validated_file_list->n_files].name, file_list->metadata[i].name); // TODO: come replace strcpy
                     validated_file_list->n_files++; 
                 }
             }
@@ -82,18 +82,19 @@ void validate_list_files(list_response_t *file_list, list_response_t *validated_
 
 /** @brief Perform the list operation
  *
- * @param pkt_len The length of the incoming packet
- * @param buf A pointer the incoming message buffer
+ *  @param pkt_len The length of the incoming packet
+ *  @param buf A pointer the incoming message buffer
  *
  * @return 0 upon success. A negative value on error.
 */
 int list(uint16_t pkt_len, uint8_t *buf) {
     list_command_t *command = (list_command_t*)buf;
+    list_response_t file_list;
 
-    memset(&file_list_buf, 0, sizeof(file_list_buf));
+    memset(&file_list, 0, sizeof(file_list));
 
-    // copy relevant fields into the static struct
-    generate_list_files(&file_list_buf);
+    // copy relevant fields into the final struct
+    generate_list_files(&file_list);
     
     if (!check_pin(command->pin)) {
         wrong_pin_lockout_init();
@@ -104,8 +105,8 @@ int list(uint16_t pkt_len, uint8_t *buf) {
 
     print_debug("In list function\n");
     // write success packet with list
-    pkt_len_t length = LIST_PKT_LEN(file_list_buf.n_files);
-    write_packet(CONTROL_INTERFACE, LIST_MSG, &file_list_buf, length);
+    pkt_len_t length = LIST_PKT_LEN(file_list.n_files);
+    write_packet(CONTROL_INTERFACE, LIST_MSG, &file_list, length);
     return 0;
 }
 
@@ -239,6 +240,8 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     receive_challenge_t chal;
     receive_chalresp_t resp;
     
+    // THE FIX: Removed local receive_response_t recv_resp!
+
     if (!check_pin(command->pin)) {
         wrong_pin_lockout_init();
         pin_lockout();
@@ -268,6 +271,7 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
         print_error("RECEIVE: expected challenge");
         return -1;
     }
+
     if (chal.slot != command->read_slot) {
         send_abort(command->read_slot, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
         print_error("RECEIVE: challenge slot mismatch");
@@ -279,25 +283,6 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
-    // --- Verify the AES-CMAC from the List HSM ---
-    uint8_t context_buf[sizeof(slot_t) + sizeof(group_id_t) + NONCE_SIZE];
-    uint32_t offset = 0;
-    
-    memcpy(context_buf + offset, &chal.slot, sizeof(slot_t));
-    offset += sizeof(slot_t);
-    
-    memcpy(context_buf + offset, &chal.group_id, sizeof(group_id_t));
-    offset += sizeof(group_id_t);
-    
-    memcpy(context_buf + offset, chal.nonce, NONCE_SIZE);
-    offset += NONCE_SIZE;
-
-    if (check_signature_cmac(chal.group_id, context_buf, offset, chal.mac, 16) != 0) {
-        send_abort(chal.slot, chal.group_id, RCV_ABORT_GENERIC);
-        print_error("RECEIVE: invalid challenge CMAC. Oracle attack prevented!");
-        return -1;
-    }
-
     // 3) Local permission check
     if (!has_receive_permission(chal.group_id)) {
         send_abort(chal.slot, chal.group_id, RCV_ABORT_GENERIC);
@@ -305,24 +290,21 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
-    // 4) Build challenge response using Asymmetric ECC Sign
+    // 4) Build challenge response (ECC sign TODO)
     resp.slot = chal.slot;
     resp.group_id = chal.group_id;
     memcpy(resp.nonce, chal.nonce, NONCE_SIZE);
 
-    resp.sig_len = ECC_SIG_SIZE; // defined as 80 in security.h
-    if (sign_data(chal.group_id, chal.nonce, NONCE_SIZE, resp.sig, &resp.sig_len) != 0) {
-        send_abort(chal.slot, chal.group_id, RCV_ABORT_GENERIC);
-        print_error("RECEIVE: ECC sign failed");
-        return -1;
-    }
+    // TODO: ECC SIGN HERE (later)
+    resp.sig_len = 0;
+    memset(resp.sig, 0, sizeof(resp.sig));
 
     write_packet(TRANSFER_INTERFACE, RECEIVE_CHALRESP_MSG, &resp, sizeof(resp));
 
     // 5) Listener sends back the file
     len_recv_msg = 0x0;
     
-    // Read directly into the workspace union
+    // THE FIX: Read directly into the workspace union
     read_packet(TRANSFER_INTERFACE, &cmd, &workspace.recv_resp, &len_recv_msg, sizeof(workspace.recv_resp));
 
     if (cmd == RECEIVE_ABORT_MSG) {
@@ -335,7 +317,7 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
-    // Write the file from the workspace union
+    // THE FIX: Write the file from the workspace union
     if (write_file(command->write_slot, &workspace.recv_resp.file, workspace.recv_resp.uuid) < 0) {
         send_abort(resp.slot, resp.group_id, RCV_ABORT_GENERIC);
         print_error("Writing received file failed");
@@ -350,18 +332,17 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
 
 /** @brief Perform the interrogate operation
  *
- * @param pkt_len The length of the incoming packet
- * @param buf A pointer to the incoming message buffer
+ *  @param pkt_len The length of the incoming packet
+ *  @param buf A pointer to the incoming message buffer
  *
  * @return 0 upon success. A negative value on error.
  */
 int interrogate(uint16_t pkt_len, uint8_t *buf) {
     interrogate_command_t *command = (interrogate_command_t*)buf;
     interrogate_request_t request; 
-    
-    // THE FIX: Removed '*' to correctly allocate bytes instead of pointers!
-    uint8_t enc_request[AES_IV_SIZE + REQUEST_PADDED_SIZE]; 
+    uint8_t *enc_request[AES_IV_SIZE + REQUEST_PADDED_SIZE]; 
     msg_type_t cmd;
+    list_response_t final_list_buf;
     uint16_t len_recv_msg;
 
     // pin check
@@ -383,21 +364,21 @@ int interrogate(uint16_t pkt_len, uint8_t *buf) {
     encrypt_perms(&request, enc_request);
 
     // request the file list from the neighboring device
-    write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, enc_request, sizeof(enc_request));
+    write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, enc_request, ((AES_IV_SIZE + REQUEST_PADDED_SIZE) * sizeof(uint8_t)));
 
     // set essentially no limit to the receive message size
     len_recv_msg = 0xffff;
 
-    // recieve the response message into the static buffer
-    memset(&file_list_buf, 0, sizeof(file_list_buf));
-    read_packet(TRANSFER_INTERFACE, &cmd, &file_list_buf, &len_recv_msg, sizeof(file_list_buf));
+    // recieve the response message
+
+    read_packet(TRANSFER_INTERFACE, &cmd, &final_list_buf, &len_recv_msg, sizeof(final_list_buf));
     if (cmd != INTERROGATE_MSG) {
         print_error("Opcode mismatch");
         return -1;
     }
 
     // return the final list to the user
-    write_packet(CONTROL_INTERFACE, INTERROGATE_MSG, &file_list_buf, len_recv_msg);
+    write_packet(CONTROL_INTERFACE, INTERROGATE_MSG, &final_list_buf, len_recv_msg);
     return 0;
 }
 
@@ -414,12 +395,14 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
     pkt_len_t write_length, read_length;
 
     interrogate_request_t inter_req; 
-    
-    // THE FIX: Removed '*' to correctly allocate bytes instead of pointers!
-    uint8_t enc_request[AES_IV_SIZE + REQUEST_PADDED_SIZE];
+    uint8_t *enc_request[AES_IV_SIZE + REQUEST_PADDED_SIZE];
+    list_response_t file_list;
+    list_response_t validated_file_list; 
 
     const filesystem_entry_t *metadata;
     
+    // THE FIX: Removed local receive_response_t recv_resp!
+
     // RECEIVE handshake state
     bool pending_valid = false;
     slot_t pending_slot = 0;
@@ -449,22 +432,23 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                 memset(enc_request, 0, sizeof(enc_request));
 
                 // get the request 
+                // enc_request = (uint8_t *)uart_buf; 
                 memcpy(enc_request, (uint8_t *)uart_buf, sizeof(enc_request));
                 decrypt_perms(&inter_req, enc_request);
 
                 // zeroize the buffers we will use
-                memset(&file_list_buf, 0, sizeof(file_list_buf));
-                memset(&validated_file_list_buf, 0, sizeof(validated_file_list_buf));
+                memset(&file_list, 0, sizeof(file_list));
+                memset(&validated_file_list, 0, sizeof(validated_file_list));
 
                 // generate a list of files for the other device
-                generate_list_files(&file_list_buf);
+                generate_list_files(&file_list);
 
-                // check every file against the provided permission list
-                validate_list_files(&file_list_buf, &validated_file_list_buf, &inter_req);
+                // check every file against the provided permission list on return only files with receive perms 
+                validate_list_files(&file_list, &validated_file_list, &inter_req);
 
                 // send the list of files on this device
-                write_length = LIST_PKT_LEN(validated_file_list_buf.n_files);
-                write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, &validated_file_list_buf, write_length);
+                write_length = LIST_PKT_LEN(validated_file_list.n_files);
+                write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, &validated_file_list, write_length);
                 return 0;
             }
 
@@ -487,27 +471,6 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
 
                 // Use the PRNG to generate a secure random nonce
                 if (generate_random_bytes(chal.nonce, NONCE_SIZE) != 0) {
-                    send_abort(req->slot, chal.group_id, RCV_ABORT_GENERIC);
-                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
-                    secure_zero(&workspace, sizeof(workspace));
-                    return 0;
-                }
-
-                // --- Generate AES-CMAC over (Slot + Group ID + Nonce) ---
-                uint8_t context_buf[sizeof(slot_t) + sizeof(group_id_t) + NONCE_SIZE];
-                uint32_t offset = 0;
-                
-                memcpy(context_buf + offset, &chal.slot, sizeof(slot_t));
-                offset += sizeof(slot_t);
-                
-                memcpy(context_buf + offset, &chal.group_id, sizeof(group_id_t));
-                offset += sizeof(group_id_t);
-                
-                memcpy(context_buf + offset, chal.nonce, NONCE_SIZE);
-                offset += NONCE_SIZE;
-
-                uint32_t mac_len = 16;
-                if (sign_data_cmac(chal.group_id, context_buf, offset, chal.mac, &mac_len) != 0) {
                     send_abort(req->slot, chal.group_id, RCV_ABORT_GENERIC);
                     write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     secure_zero(&workspace, sizeof(workspace));
