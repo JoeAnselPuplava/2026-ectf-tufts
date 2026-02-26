@@ -69,8 +69,7 @@ static filesystem_entry_t FILE_ALLOCATION_TABLE[MAX_FILE_COUNT];
 
 /* MAX_CONTENTS_SIZE must be at least (MAX_PLAINTEXT_SIZE + ENCRYPTION_OVERHEAD + padding) */
 /* 8192 + 144 + 16 (max padding) = 8352. We'll use 8400 for safety. */
-#undef MAX_CONTENTS_SIZE
-#define MAX_CONTENTS_SIZE 8400
+#define MAX_ENCRYPTED_SIZE 8400
 
 /*
 The new secure design allocates files for each slot right before the FAT:

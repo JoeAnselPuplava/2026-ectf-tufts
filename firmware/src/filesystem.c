@@ -339,7 +339,8 @@ int create_file(
     uint32_t padded_len = contents_len + pad_val;
     const uint32_t overhead = ECC_BLOB_RESERVED_SIZE + AES_IV_LEN;
 
-    if (overhead + padded_len > sizeof(dest->contents)) {
+    if (overhead + padded_len > MAX_ENCRYPTED_SIZE) {
+    // if (overhead + padded_len > sizeof(dest->contents)) {
         print_debug("create_file: Total file size exceeds storage capacity");
         secure_zero(aes_key, sizeof(aes_key));
         return -1;
