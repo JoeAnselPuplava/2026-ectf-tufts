@@ -57,8 +57,8 @@ void generate_list_files(list_response_t *file_list) {
     secure_zero(&workspace.file, sizeof(workspace.file)); 
 }
 
-void validate_list_files(list_response_t *file_list, list_response_t *validated_file_list, interrogate_request_t *perms) {
-    validated_file_list->n_files = 0; 
+void validate_list_files(list_response_t *file_list, interrogate_request_t *perms) {
+    file_list->n_files = 0; 
 
     for (uint8_t i = 0; i < file_list->n_files; i++) {
         for (uint8_t j = 0; j < MAX_PERMS; j++) { 
@@ -73,6 +73,8 @@ void validate_list_files(list_response_t *file_list, list_response_t *validated_
             }
         }
     }
+    // Clean up when done
+    secure_zero(&workspace.file, sizeof(workspace.file)); 
 }
 
 /**********************************************************
