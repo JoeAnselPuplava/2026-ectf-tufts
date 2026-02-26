@@ -156,35 +156,39 @@ int read_packet(int uart_id, msg_type_t* cmd, void *buf, uint16_t *buf_size, uin
     // cmd must be a valid pointer. 
     // If a buffer is provided, we must have a way to return the length or it's logically risky.
     if (cmd == NULL || (buf != NULL && buf_size == NULL)) {
+        print_debug("MSG_BAD_PTR");
         return MSG_BAD_PTR;
     }
-
+    
     read_header(uart_id, &header);
-
+    
     *cmd = header.cmd;
-
+    
     // 2. Check against the provided buffer capacity (Buffer Overflow Protection)
     if (header.len > max_len && buf != NULL) {
         if (buf_size != NULL) {
             *buf_size = 0;
         }
+        print_debug("MSG_BAD_LEN");
         return MSG_BAD_LEN;
     }
     // Update buf_size with the actual length we are about to read
     if (buf_size != NULL) {
         *buf_size = header.len;
     }
-
+    
     if (header.cmd != ACK_MSG) {
         write_ack(uart_id);  // ACK the header
-
+        
         if (header.len > 0 && buf != NULL) {
             // This is now safe because we verified header.len <= max_len
             if (read_bytes(uart_id, buf, header.len) != MSG_OK) {
+                print_debug("MSG_NO_ACK 1");
                 return MSG_NO_ACK;
             }
             // ACK the final block (read_bytes only ACKs every 256 bytes)
             if (write_ack(uart_id) != MSG_OK) { 
+                print_debug("MSG_NO_ACK 2");
                 return MSG_NO_ACK;
             }
         }
