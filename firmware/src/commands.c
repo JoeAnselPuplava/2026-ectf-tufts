@@ -449,6 +449,7 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                 // send the list of files on this device
                 write_length = LIST_PKT_LEN(validated_file_list.n_files);
                 write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, &validated_file_list, write_length);
+                write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                 return 0;
             }
 
