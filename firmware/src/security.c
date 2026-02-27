@@ -368,7 +368,6 @@ int check_signature(uint16_t group_id, uint8_t* input, uint32_t input_len,  uint
     uint8_t hash[WC_SHA256_DIGEST_SIZE];
 
     if (init_crypto_engine() != 0) return -1;
-    if (!validate_permission(group_id, PERM_RECEIVE)) return PERMISSION_DENIED;
 
     // 1. KEY CACHING LOGIC
     if (group_id != cached_check_group_id) {
