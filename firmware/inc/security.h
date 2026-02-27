@@ -99,7 +99,7 @@ int decrypt_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, ui
  * @param sig_len In: Size of sig buffer (Use ECC_SIG_SIZE). Out: Bytes written.
  * @return 0 on success, non-zero on error.
  */
-int sign_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t* sig_len);
+int sign_data(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t* sig_len);
 
 /** * @brief Checks (verifies) a signature using the Group's Check Key (Public Key).
  * Requires PERM_RECEIVE.
@@ -110,7 +110,7 @@ int sign_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, uint8
  * @param sig_len Length of the signature.
  * @return 0 if signature is VALID, non-zero if INVALID or error.
  */
-int check_signature(uint16_t group_id, const uint8_t* input, uint32_t input_len, const uint8_t* signature, uint32_t sig_len);
+int check_signature(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t sig_len);
 
 uint8_t encrypt_perms(interrogate_request_t *request, uint8_t *enc_request); 
 
@@ -125,7 +125,7 @@ uint8_t decrypt_perms(interrogate_request_t *request, uint8_t *enc_request);
  * @param sig_len In: Size of sig buffer. Out: Bytes written (always 16 for AES).
  * @return 0 on success, non-zero on error.
  */
-int sign_data_cmac(uint16_t group_id, const uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t* sig_len);
+int sign_data_cmac(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t* sig_len);
 
 /** * @brief Verifies an AES-CMAC authentication tag.
  * Requires PERM_RECEIVE.
@@ -136,7 +136,7 @@ int sign_data_cmac(uint16_t group_id, const uint8_t* input, uint32_t input_len, 
  * @param sig_len Length of the MAC (must be 16).
  * @return 0 if MAC is VALID, non-zero if INVALID or error.
  */
-int check_signature_cmac(uint16_t group_id, const uint8_t* input, uint32_t input_len, const uint8_t* signature, uint32_t sig_len);
+int check_signature_cmac(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t sig_len);
 
 void secure_zero(void* v, size_t n);
 int init_crypto_engine(void);

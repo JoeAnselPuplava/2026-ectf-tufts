@@ -58,6 +58,7 @@ bool constant_time_compare(uint8_t* a, const uint8_t* b, size_t len) {
 }
 
 bool check_pin(unsigned char *pin) {
+    print_debug(pin);
     uint8_t hash[WC_SHA256_DIGEST_SIZE] = {0};
     wc_Sha256 sha;
     if (wc_InitSha256(&sha) != 0) return false;
@@ -292,10 +293,10 @@ cleanup:
 }
 
 
-int sign_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t* sig_len) {
+int sign_data(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t* sig_len) {
     static ecc_key cached_sign_key;
     static uint16_t cached_sign_group_id = 0xFFFF;
-    
+    char local_dbg[128]; 
     int ret;
     uint8_t hash[WC_SHA256_DIGEST_SIZE];
 
@@ -303,11 +304,17 @@ int sign_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, uint8
     if (!validate_permission(group_id, PERM_RECEIVE)) return PERMISSION_DENIED;
 
     // 1. KEY CACHING LOGIC
+    print_debug("KEY CACHING LOGIC");
     if (group_id != cached_sign_group_id) {
         if (cached_sign_group_id != 0xFFFF) wc_ecc_free(&cached_sign_key);
 
         const group_secrets_t* secrets = (const group_secrets_t*)get_group_secrets(group_id);
-        if (!secrets || secrets->verify_key[0] == 0) return BAD_FUNC_ARG;
+        
+        // FIX: Added curly braces
+        if (!secrets || secrets->verify_key[0] == 0) {
+            print_error("secrets->verify_key"); 
+            return BAD_FUNC_ARG;
+        }
 
         wc_ecc_init(&cached_sign_key);
         
@@ -322,25 +329,37 @@ int sign_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, uint8
             ECTF_CURVE_ID 
         );
 
-        if (ret != 0) return ret;
+        // FIX: Added curly braces
+        if (ret != 0) {
+            print_error("PRIVATE KEY FAILED"); 
+            return ret;
+        }
         cached_sign_group_id = group_id;
     }
 
     // 2. Hash the raw input data (ECDSA signs a hash, not the raw text)
     ret = wc_Sha256Hash(input, input_len, hash);
-    if (ret != 0) return ret;
+    
+    // FIX: Added curly braces
+    if (ret != 0) {
+        print_error("HASH FAILED"); 
+        return ret;
+    }
 
     // 3. Generate the ECDSA Signature
     ret = wc_ecc_sign_hash(
-        hash, sizeof(hash), 
-        signature, sig_len, 
-        &global_rng, &cached_sign_key
-    );
-    
+        hash, 
+        sizeof(hash), 
+        signature, 
+        sig_len, 
+        &global_rng, 
+        &cached_sign_key);
+    sprintf(local_dbg, "sign ret: %d", ret);
+    print_debug(local_dbg);
     return ret; // 0 on success
 }
 
-int check_signature(uint16_t group_id, const uint8_t* input, uint32_t input_len, const uint8_t* signature, uint32_t sig_len) {
+int check_signature(uint16_t group_id, uint8_t* input, uint32_t input_len,  uint8_t* signature, uint32_t sig_len) {
     static ecc_key cached_check_key;
     static uint16_t cached_check_group_id = 0xFFFF;
     
@@ -454,7 +473,7 @@ uint8_t encrypt_perms(interrogate_request_t *request, uint8_t *enc_request) {
     if (ret != 0) return ret;
 
     // set the key 
-    ret = wc_AesSetKey(&aes, GLOBAL_AES_KEY, AES_KEY_SIZE, iv, AES_ENCRYPTION);
+    ret = wc_AesSetKey(&aes, INTERROGATE_AES_KEY, AES_KEY_SIZE, iv, AES_ENCRYPTION);
     if (ret != 0) return ret;
 
     // convert and pad request 
@@ -493,7 +512,7 @@ uint8_t decrypt_perms(interrogate_request_t *request, uint8_t *enc_request) {
     memcpy(iv, enc_request, AES_IV_SIZE);
 
     // set the key 
-    ret = wc_AesSetKey(&aes, GLOBAL_AES_KEY, AES_KEY_SIZE, iv, AES_DECRYPTION);
+    ret = wc_AesSetKey(&aes, INTERROGATE_AES_KEY, AES_KEY_SIZE, iv, AES_DECRYPTION);
     if (ret != 0) return ret;
 
     // decrypt the data 
@@ -583,24 +602,21 @@ int generate_random_bytes(uint8_t *output, uint32_t length) {
     
     return 0;
 }
-int sign_data_cmac(uint16_t group_id, const uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t* sig_len) {
+int sign_data_cmac(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t* sig_len) {
     Cmac cmac;
     int ret;
     word32 outLen = WC_AES_BLOCK_SIZE; // Use standard AES block size (16 bytes)
 
+    print_debug("init_crypto_engine");
     if (init_crypto_engine() != 0) return -1;
-    if (!validate_permission(group_id, PERM_RECEIVE)) return PERMISSION_DENIED;
-
-    // Retrieve the symmetric key. For CMAC, we will repurpose the 32-byte verify_key 
-    // as our shared AES-256 symmetric key.
-    const group_secrets_t* secrets = (const group_secrets_t*)get_group_secrets(group_id);
-    if (!secrets || secrets->verify_key[0] == 0) return BAD_FUNC_ARG;
 
     // Initialize CMAC with AES-256
-    ret = wc_InitCmac(&cmac, secrets->verify_key, 32, WC_CMAC_AES, NULL);
+    print_debug("Initialize CMAC with AES-256");
+    ret = wc_InitCmac(&cmac, RECEIVE_AES_KEY, 32, WC_CMAC_AES, NULL);
     if (ret != 0) return ret;
 
     // Update the CMAC with the input data
+    print_debug("wc_CmacUpdate");
     ret = wc_CmacUpdate(&cmac, input, input_len);
     if (ret != 0) {
         secure_zero(&cmac, sizeof(cmac));
@@ -608,17 +624,19 @@ int sign_data_cmac(uint16_t group_id, const uint8_t* input, uint32_t input_len, 
     }
 
     // Generate the final 16-byte MAC
+    print_debug("GENERATING CMAC");
     ret = wc_CmacFinal(&cmac, signature, &outLen);
     if (ret == 0) {
         *sig_len = (uint32_t)outLen;
     }
 
     // Clean up
+    print_debug("DONE SIGNING");
     secure_zero(&cmac, sizeof(cmac));
     return ret; 
 }
 
-int check_signature_cmac(uint16_t group_id, const uint8_t* input, uint32_t input_len, const uint8_t* signature, uint32_t sig_len) {
+int check_signature_cmac(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t sig_len) {
     uint8_t expected_mac[WC_AES_BLOCK_SIZE];
     uint32_t expected_mac_len = WC_AES_BLOCK_SIZE;
     int ret;

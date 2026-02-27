@@ -65,7 +65,7 @@ typedef struct {
     char name[MAX_NAME_SIZE];
     uint8_t uuid[UUID_SIZE];
     uint16_t contents_len;
-    uint8_t contents[MAX_CONTENTS_SIZE];
+    uint8_t contents[MAX_ENCRYPTED_SIZE];
 } write_command_t;
 
 typedef struct {
@@ -99,6 +99,7 @@ typedef struct {
     group_id_t group_id;
     uint8_t nonce[NONCE_SIZE];
     uint8_t mac[16]; // NEW: Holds the AES-CMAC tag to prevent oracle attacks
+    uint32_t mac_len;
 } receive_challenge_t;
 
 typedef struct {
@@ -106,8 +107,7 @@ typedef struct {
     group_id_t group_id;
     uint8_t nonce[NONCE_SIZE];
 
-    // TODO: ECC signature added later
-    uint16_t sig_len;
+    uint32_t sig_len;
     uint8_t sig[SIG_MAX_BYTES];
 } receive_chalresp_t;
 

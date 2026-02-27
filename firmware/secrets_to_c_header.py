@@ -100,9 +100,12 @@ def secrets_to_c_header(
     h = hashlib.sha256(hsm_pin.encode("utf-8")).digest()
     
     # Extract Global AES Key
-    global_aes_hex = secrets_dict.get("GLOBAL_AES_KEY", "")
-    if not global_aes_hex:
-        print("Warning: GLOBAL_AES_KEY not found in secrets file.")
+    interrogate_aes_hex = secrets_dict.get("INTERROGATE_AES_KEY", "")
+    if not interrogate_aes_hex:
+        print("Warning: INTERROGATE_AES_KEY not found in secrets file.")
+    receive_aes_hex = secrets_dict.get("RECEIVE_AES_KEY", "")
+    if not receive_aes_hex:
+        print("Warning: RECEIVE_AES_KEY not found in secrets file.")
     
     # Track which groups we actually found secrets for
     found_groups = set()
@@ -120,9 +123,15 @@ def secrets_to_c_header(
         f.write(", ".join(f"0x{b:02x}" for b in h))
         f.write("\n};\n\n")
 
+        # # Write Global AES Key
+        # f.write("// Global System AES-128 Key\n")
+        # f.write(f"static const uint8_t GLOBAL_AES_KEY[32] = {_format_key_as_c_array(global_aes_hex, included=True)};\n\n")
         # Write Global AES Key
         f.write("// Global System AES-128 Key\n")
-        f.write(f"static const uint8_t GLOBAL_AES_KEY[32] = {_format_key_as_c_array(global_aes_hex, included=True)};\n\n")
+        f.write(f"static const uint8_t INTERROGATE_AES_KEY[32] = {_format_key_as_c_array(interrogate_aes_hex, included=True)};\n\n")
+        # Write Global AES Key
+        f.write("// Global System AES-128 Key\n")
+        f.write(f"static const uint8_t RECEIVE_AES_KEY[32] = {_format_key_as_c_array(receive_aes_hex, included=True)};\n\n")
 
         # Write Struct Definition for SECP256R1
         f.write("// SECP256R1 Keys derived from gen_secrets.py\n")
@@ -134,9 +143,9 @@ def secrets_to_c_header(
         f.write("} group_secrets_t;\n\n")
 
         # Create a lookup map for secrets where keys are integers
-        # Ignore the "GLOBAL_AES_KEY" string key here
+        # Ignore the "RECEIVE_AES_KEY" and "INTERROGATE_AES_KEY" "string key here
         normalized_secrets = {
-            int(k): v for k, v in secrets_dict.items() if k != "GLOBAL_AES_KEY"
+            int(k): v for k, v in secrets_dict.items() if k != "RECEIVE_AES_KEY" and k != "INTERROGATE_AES_KEY"
         }
 
         for perm in permissions:
@@ -161,7 +170,7 @@ def secrets_to_c_header(
             f.write(f"    .read_key   = {_format_key_as_c_array(read_key_hex,  included=perm.read)},\n")
             f.write(f"    .write_key  = {_format_key_as_c_array(write_key_hex, included=(perm.write or perm.read))},\n")
             f.write(f"    .verify_key = {_format_key_as_c_array(verify_key_hex, included=perm.receive)},\n")
-            f.write(f"    .check_key  = {_format_key_as_c_array(check_key_hex, included=perm.receive)}\n")
+            f.write(f"    .check_key  = {_format_key_as_c_array(check_key_hex, included=(perm.write or perm.receive))}\n")
             f.write("};\n\n")
 
         # Create the array of pointers

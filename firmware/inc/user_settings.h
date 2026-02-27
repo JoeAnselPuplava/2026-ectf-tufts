@@ -2,44 +2,47 @@
 #define WOLFSSL_USER_SETTINGS_H
 
 /* -------------------------------------------------------------------------
- * Math Configuration
- * ------------------------------------------------------------------------- */
-// #define USE_FAST_MATH           // Use the optimized TFM math library
-// #define TFM_ECC256              // Optimize strictly for 256-bit curves
-// #define FP_MAX_BITS 512         // Max integer size (Shrinks RAM usage)
-/* -------------------------------------------------------------------------
- * Math Configuration
- * ------------------------------------------------------------------------- */
-#define WOLFSSL_SP
-#define WOLFSSL_SP_MATH_ALL
-#define WOLFSSL_HAVE_SP_ECC
-// #define WOLFSSL_SP
-// #define WOLFSSL_SP_SMALL             // <-- RESTORED: Keeps memory footprint tiny
-// #define WOLFSSL_SMALL_STACK          // <-- RESTORED: Prevents stack overflow crashes
-
-// #define WOLFSSL_SP_MATH_ALL
-// #define WOLFSSL_HAVE_SP_ECC
-// #define WOLFSSL_SP_ASM               // <-- ADDED: Enables Assembly math
-// #define WOLFSSL_SP_ARM_THUMB_ASM     // <-- ADDED: Forces the M0+ Thumb-1 architecture
-
-/* -------------------------------------------------------------------------
  * System & Memory Configuration
  * ------------------------------------------------------------------------- */
 #define SINGLE_THREADED         // No OS threads available
 #define NO_FILESYSTEM           // No stdio/filesystem available
-// #define WOLFSSL_SMALL_STACK     // Favor heap over stack
 #define WOLFCRYPT_ONLY          // Build only the crypto (no TLS/SSL)
 #define WC_NO_DEFAULT_DEVID     // No default device ID
+
+/* -------------------------------------------------------------------------
+ * Aggressive Size Reductions (Crucial for Cortex-M0+)
+ * ------------------------------------------------------------------------- */
+#define NO_ERROR_STRINGS        // Strips out thousands of bytes of error text from .rodata
+// #define NO_ASN                  // Disables ASN.1 cert parsing (not needed for raw ECC)
+// #define USE_AES_SMALL           // Shrinks AES T-tables in .rodata
+// #define WOLFSSL_SMALL_STACK     // Prevents stack overflow crashes in deep crypto calls
+
+/* Disable unused legacy algorithms compiled by default */
+#define NO_RSA
+#define NO_DSA
+#define NO_MD5
+#define NO_SHA
+#define NO_DES3
+#define NO_RC4
+#define NO_RABBIT
+
+/* -------------------------------------------------------------------------
+ * Math Configuration
+ * ------------------------------------------------------------------------- */
+#define WOLFSSL_SP              // Enable Single Precision math
+#define WOLFSSL_HAVE_SP_ECC     // Use SP for Elliptic Curve
+#define WOLFSSL_SP_MATH         // Use C SP math (replaces WOLFSSL_SP_MATH_ALL)
+#define WOLFSSL_SP_256          // STRICTLY compile 256-bit math only
+// #define WOLFSSL_SP_SMALL        // Use loops instead of unrolled code (Massive .text savings)
 
 /* -------------------------------------------------------------------------
  * Algorithm Selection
  * ------------------------------------------------------------------------- */
 #define HAVE_ECC                // Enable Elliptic Curves
-// #define HAVE_COMP_KEY           // Enable Compressed Keys (0x02/0x03)
 #define WOLFSSL_SECP256R1       // Enable NIST P-256 Curve
 #define WOLFSSL_SHA256          // Enable SHA-256
 #define WOLFSSL_AES_DIRECT      // Enable AES-CBC Direct Access
-#define WOLFSSL_CMAC
+#define WOLFSSL_CMAC            // Enable CMAC for challenges
 
 /* -------------------------------------------------------------------------
  * RNG Configuration (Bypass DRBG entirely)

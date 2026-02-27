@@ -32,7 +32,7 @@
 
 *****************************************************************************/
 -uinterruptVectors
---stack_size=0x3000  
+--stack_size=0x35d0 //  12288 kb
 --heap_size=0x0010   
 
 #define FLASH_BASE 0x6000
@@ -41,7 +41,13 @@ MEMORY
 {
     /* Divide this in half and allocate the first half to user space and the second reserved */
     BOOTLOADER      (RX)  : origin = 0x00000000, length = 0x00006000 /* Bootloader flash */
-    FLASH           (RX)  : origin = 0x00006000, length = 0x00034000 /* Location of team firmware */
+    
+    /* NEW: Application code MUST stop before 0x00028000 */
+    FLASH           (RX)  : origin = 0x00006000, length = 0x00022000 /* Location of team firmware */
+    
+    /* NEW: Dedicated region for the filesystem so the linker leaves it alone */
+    FILESYSTEM      (R)   : origin = 0x00028000, length = 0x00012000 /* 8 files * 9 pages */
+    
     FAT             (RW)  : origin = 0x0003A000, length = 0x00000400 /* Used to store tag, length, pointer values for files */
     APP2            (RX)  : origin = 0x0003A400, length = 0x00005c00 /* Location of team firmware */
     SRAM            (RWX) : origin = 0x20200000, length = 0x00008000

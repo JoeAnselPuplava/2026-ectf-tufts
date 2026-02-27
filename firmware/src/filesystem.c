@@ -92,7 +92,7 @@ int write_file(slot_t slot, file_t *src, uint8_t *uuid) {
     // --- SHIELD DOWN ---
 
     print_debug("FILE: Erase survived. Starting Write...");
-    
+     
     // 3. Write File safely
     // --- SHIELD UP ---
     __disable_irq();
@@ -478,40 +478,6 @@ int decrypt_file_contents(
     print_debug(dbg_buf);
     return 0;
 }
-
-// int write_file(slot_t slot, file_t *src, uint8_t *uuid) {
-//     unsigned int length, flash_addr;
-
-//     sprintf(dbg_buf, "write_file: Writing slot %d", slot);
-//     print_debug(dbg_buf);
-
-//     flash_addr = FILE_START_PAGE_FROM_SLOT(slot);
-//     length = FILE_TOTAL_SIZE(src->contents_len);
-    
-//     // Update the FAT for the new file
-//     memcpy(&FILE_ALLOCATION_TABLE[slot].uuid, uuid, UUID_SIZE);
-//     FILE_ALLOCATION_TABLE[slot].flash_addr = flash_addr;
-//     FILE_ALLOCATION_TABLE[slot].length = length;
-    
-//     // store_fat() handles its own interrupts
-//     store_fat();
-
-//     // 1. Disable interrupts for the main file write!
-//     __disable_irq();
-
-//     // Erase the pages that will store the file
-//     for (int i = 0; i < FILE_PAGE_COUNT; i++) {
-//         flash_simple_erase_page(flash_addr + (FLASH_PAGE_SIZE * i));
-//     }
-
-//     // Now write the file
-//     int ret = flash_simple_write(FILE_ALLOCATION_TABLE[slot].flash_addr, src, length);
-    
-//     // 2. Re-enable interrupts
-//     __enable_irq();
-
-//     return ret;
-// }
 
 int read_file(slot_t slot, file_t *dest) {
     int flash_addr, file_size;

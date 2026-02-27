@@ -66,8 +66,13 @@ def gen_secrets(groups: list[int]) -> bytes:
 
         # --- AES Key ---
         # Generate a 32-byte (256-bit) symmetric key for AES
-        global_aes_key_bytes = os.urandom(32)
-        glob_sec["GLOBAL_AES_KEY"] = global_aes_key_bytes.hex()
+        # global_aes_key_bytes = os.urandom(32)
+        # glob_sec["GLOBAL_AES_KEY"] = global_aes_key_bytes.hex()
+        interrogate_aes_key_bytes = os.urandom(32)
+        glob_sec["INTERROGATE_AES_KEY"] = interrogate_aes_key_bytes.hex()
+        
+        receive_aes_key_bytes = os.urandom(32)
+        glob_sec["RECEIVE_AES_KEY"] = receive_aes_key_bytes.hex()
 
         # Add groups and secrets (Converted to Hex Strings)
         glob_sec.update({

@@ -125,17 +125,24 @@ int read(uint16_t pkt_len, uint8_t *buf) {
     read_command_t *command = (read_command_t*)buf;
     
     if (!check_pin(command->pin)) {
-        wrong_pin_lockout_init(); pin_lockout(); print_error("Invalid pin"); return -1;
+        wrong_pin_lockout_init(); 
+        pin_lockout(); 
+        print_error("Invalid pin"); 
+        return -1;
     }
 
     memset(&workspace, 0, sizeof(workspace));
 
     if (read_file(command->slot, &workspace.file) < 0) {
-        print_error("Failed to read file"); return -1;
+        print_error("Failed to read file"); 
+        secure_zero(&workspace.file, sizeof(workspace.file)); 
+        return -1;
     }
 
     if (!validate_permission(workspace.file.group_id, PERM_READ)) {
-        print_error("Invalid permission"); return -1;
+        print_error("Invalid permission"); 
+        secure_zero(&workspace.file, sizeof(workspace.file)); 
+        return -1;
     }
 
     // 1. Save data before we overwrite the union
@@ -144,7 +151,7 @@ int read(uint16_t pkt_len, uint8_t *buf) {
     memcpy(temp_name, workspace.file.name, MAX_NAME_SIZE);
     temp_name[MAX_NAME_SIZE - 1] = '\0';
 
-    uint16_t plain_len = MAX_CONTENTS_SIZE;
+    uint16_t plain_len = MAX_ENCRYPTED_SIZE;
 
     // 2. Decrypt in-place. 
     int ret = decrypt_file_contents(
@@ -240,8 +247,6 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     receive_challenge_t chal;
     receive_chalresp_t resp;
     
-    // THE FIX: Removed local receive_response_t recv_resp!
-
     if (!check_pin(command->pin)) {
         wrong_pin_lockout_init();
         pin_lockout();
@@ -256,30 +261,65 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
 
     // 1) Send slot request
     req.slot = command->read_slot;
+    print_debug("SENDING SLOT");
     write_packet(TRANSFER_INTERFACE, RECEIVE_REQ_MSG, &req, sizeof(req));
-
+    
     // 2) Read challenge
     len_recv_msg = 0;
+    print_debug("WAITING FOR CHALLENGE SLOT");
     read_packet(TRANSFER_INTERFACE, &cmd, &chal, &len_recv_msg, sizeof(chal));
+    print_debug("GOT THE CHALLENGE");
 
+    // CRITICAL FIX: Check the command type FIRST
     if (cmd == RECEIVE_ABORT_MSG) {
         print_error("RECEIVE: peer aborted");
+        write_packet(CONTROL_INTERFACE, RECEIVE_MSG, NULL, 0);
         return -1;
     }
     if (cmd != RECEIVE_CHAL_MSG) {
         send_abort(command->read_slot, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
         print_error("RECEIVE: expected challenge");
+        write_packet(CONTROL_INTERFACE, RECEIVE_MSG, NULL, 0);
         return -1;
     }
+
+    // CRITICAL FIX: Pack the data to avoid padding, and align the MAC
+    uint8_t chal_payload[sizeof(chal.slot) + sizeof(chal.group_id) + NONCE_SIZE];
+    uint32_t offset = 0;
+    memcpy(chal_payload + offset, &chal.slot, sizeof(chal.slot));
+    offset += sizeof(chal.slot);
+    memcpy(chal_payload + offset, &chal.group_id, sizeof(chal.group_id));
+    offset += sizeof(chal.group_id);
+    memcpy(chal_payload + offset, chal.nonce, NONCE_SIZE);
+
+    uint8_t aligned_mac[16] __attribute__((aligned(4)));
+    memcpy(aligned_mac, chal.mac, sizeof(chal.mac));
+
+    // Check the mac securely
+    if (check_signature_cmac(
+        chal.group_id, 
+        chal_payload, 
+        sizeof(chal_payload), 
+        aligned_mac, 
+        sizeof(aligned_mac)) != 0)
+    {
+        send_abort(command->read_slot, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
+        print_error("RECEIVE: wrong mac!");
+        write_packet(CONTROL_INTERFACE, RECEIVE_MSG, NULL, 0);
+        return -1;
+    }
+    print_debug("MAC SUCCEEDED");
 
     if (chal.slot != command->read_slot) {
         send_abort(command->read_slot, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
         print_error("RECEIVE: challenge slot mismatch");
+        write_packet(CONTROL_INTERFACE, RECEIVE_MSG, NULL, 0);
         return -1;
     }
     if (chal.group_id == (group_id_t)0xFFFF) {
         send_abort(chal.slot, chal.group_id, RCV_ABORT_GENERIC);
         print_error("RECEIVE: invalid slot");
+        write_packet(CONTROL_INTERFACE, RECEIVE_MSG, NULL, 0);
         return -1;
     }
 
@@ -287,26 +327,56 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     if (!has_receive_permission(chal.group_id)) {
         send_abort(chal.slot, chal.group_id, RCV_ABORT_GENERIC);
         print_error("RECEIVE: no receive permission");
+        write_packet(CONTROL_INTERFACE, RECEIVE_MSG, NULL, 0);
         return -1;
     }
 
-    // 4) Build challenge response (ECC sign TODO)
+    // 4) Build challenge response (ECC sign)
     resp.slot = chal.slot;
     resp.group_id = chal.group_id;
     memcpy(resp.nonce, chal.nonce, NONCE_SIZE);
-
-    // TODO: ECC SIGN HERE (later)
     resp.sig_len = 0;
-    memset(resp.sig, 0, sizeof(resp.sig));
 
+    // CRITICAL FIX: Pack the response data to avoid padding issues during signing
+    uint8_t resp_payload[sizeof(resp.slot) + sizeof(resp.group_id) + NONCE_SIZE];
+    offset = 0;
+    memcpy(resp_payload + offset, &resp.slot, sizeof(resp.slot));
+    offset += sizeof(resp.slot);
+    memcpy(resp_payload + offset, &resp.group_id, sizeof(resp.group_id));
+    offset += sizeof(resp.group_id);
+    memcpy(resp_payload + offset, resp.nonce, NONCE_SIZE);
+
+    uint8_t aligned_sig[80] __attribute__((aligned(4))); // Adjust size to your ECDSA max
+    uint32_t temp_sig_len = 80;
+
+    // Ecc signature
+    if(sign_data(
+        resp.group_id, 
+        resp_payload, 
+        sizeof(resp_payload),
+        aligned_sig, 
+        &temp_sig_len) != 0)
+    {
+        send_abort(chal.slot, chal.group_id, RCV_ABORT_GENERIC);
+        print_error("RECEIVE: SIGNATURE FAILED");
+        write_packet(CONTROL_INTERFACE, RECEIVE_MSG, NULL, 0);
+        return -1;
+    }
+
+    // Copy the aligned signature back into the struct for transmission
+    memcpy(resp.sig, aligned_sig, temp_sig_len);
+    resp.sig_len = temp_sig_len;
+
+    print_debug("Sending response to listen HSM");
     write_packet(TRANSFER_INTERFACE, RECEIVE_CHALRESP_MSG, &resp, sizeof(resp));
-
+    
     // 5) Listener sends back the file
     len_recv_msg = 0x0;
     
-    // THE FIX: Read directly into the workspace union
+    print_debug("WAITING FOR FILE");
+    // Read directly into the workspace union
     read_packet(TRANSFER_INTERFACE, &cmd, &workspace.recv_resp, &len_recv_msg, sizeof(workspace.recv_resp));
-
+    
     if (cmd == RECEIVE_ABORT_MSG) {
         print_error("RECEIVE: peer aborted");
         return -1;
@@ -316,8 +386,9 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
         print_error("RECEIVE: expected file response");
         return -1;
     }
-
-    // THE FIX: Write the file from the workspace union
+    
+    // Write the file from the workspace union
+    print_debug("WRITE FILE");
     if (write_file(command->write_slot, &workspace.recv_resp.file, workspace.recv_resp.uuid) < 0) {
         send_abort(resp.slot, resp.group_id, RCV_ABORT_GENERIC);
         print_error("Writing received file failed");
@@ -340,7 +411,7 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
 int interrogate(uint16_t pkt_len, uint8_t *buf) {
     interrogate_command_t *command = (interrogate_command_t*)buf;
     interrogate_request_t request; 
-    uint8_t *enc_request[AES_IV_SIZE + REQUEST_PADDED_SIZE]; 
+    uint8_t enc_request[AES_IV_SIZE + REQUEST_PADDED_SIZE]; 
     msg_type_t cmd;
     list_response_t final_list_buf;
     uint16_t len_recv_msg;
@@ -395,7 +466,7 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
     pkt_len_t write_length, read_length;
 
     interrogate_request_t inter_req; 
-    uint8_t *enc_request[AES_IV_SIZE + REQUEST_PADDED_SIZE];
+    uint8_t enc_request[AES_IV_SIZE + REQUEST_PADDED_SIZE];
     list_response_t file_list;
     list_response_t validated_file_list; 
 
@@ -461,28 +532,57 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                 chal.slot = req->slot;
                 memset(&workspace, 0, sizeof(workspace));
 
+                print_debug("RECEIVED RECEIVE");
+
                 // Use workspace.file to check the slot safely
                 if (read_file(req->slot, &workspace.file) < 0) {
+                    print_error("READING FILE FAILED");
                     send_abort(req->slot, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
                     write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
-                    return 0;
+                    return -1;
                 }
 
+                
                 chal.group_id = workspace.file.group_id;
-
+                
                 // Use the PRNG to generate a secure random nonce
+                print_debug("GENERATING PRNG");
                 if (generate_random_bytes(chal.nonce, NONCE_SIZE) != 0) {
                     send_abort(req->slot, chal.group_id, RCV_ABORT_GENERIC);
                     write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     secure_zero(&workspace, sizeof(workspace));
-                    return 0;
+                    return -1;
                 }
-
+                
                 pending_valid = true;
                 pending_slot = chal.slot;
                 pending_group = chal.group_id;
                 memcpy(pending_nonce, chal.nonce, NONCE_SIZE);
+                
+                // Compute ECC signature
+                print_debug("Compute ECC signature");
+                uint8_t temp_mac[16] __attribute__((aligned(4)));
+                uint32_t temp_mac_len = 0;
+                if (sign_data_cmac(
+                    pending_group, 
+                    (uint8_t *)&chal, 
+                    sizeof(chal.slot) + sizeof(chal.group_id) + sizeof(chal.nonce),
+                    temp_mac,
+                    &temp_mac_len) != 0)
+                {  
+                    print_error("SIGN FAILED");
+                    send_abort(req->slot, chal.group_id, RCV_ABORT_GENERIC);
+                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
+                    secure_zero(&workspace, sizeof(workspace));
+                    return -1;
+                }
 
+                memcpy(chal.mac, temp_mac, temp_mac_len);
+                chal.mac_len = (uint8_t)temp_mac_len;
+
+                    
+                    // Send challenge message
+                print_debug("Sending challenge message");
                 write_packet(TRANSFER_INTERFACE, RECEIVE_CHAL_MSG, &chal, sizeof(chal));
                 
                 // Clean up workspace before breaking to next message
@@ -491,33 +591,75 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
             }
 
             case RECEIVE_CHALRESP_MSG: {
-                receive_chalresp_t *resp = (receive_chalresp_t *)uart_buf;
+                // Assuming your UART receive framework gives you the received length
+                // if (uart_len < sizeof(receive_chalresp_t)) { return -1; }
 
+                print_debug("RECEIVE_CHALRESP_MSG");
+                receive_chalresp_t *resp = (receive_chalresp_t *)uart_buf;
+                
                 if (!pending_valid) {
+                    print_debug("RECEIVE: no pending challenge");
                     send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
-                    print_error("RECEIVE: no pending challenge");
+                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     return -1;
                 }
-
+                
+                print_debug("PENDING IS VALID");
                 if (resp->slot != pending_slot || resp->group_id != pending_group) {
                     pending_valid = false;
+                    print_debug("RECEIVE: response mismatch");
                     send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
-                    print_error("RECEIVE: response mismatch");
+                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     return -1;
                 }
-
+                
+                print_debug("SLOT GROUPID VALID");
                 if (memcmp(resp->nonce, pending_nonce, NONCE_SIZE) != 0) {
                     pending_valid = false;
+                    print_debug("RECEIVE: nonce mismatch");
                     send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
-                    print_error("RECEIVE: nonce mismatch");
+                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     return -1;
                 }
+                
+                print_debug("NONCE VALID");
+                // 1 & 2: Pack the data tightly and align the signature
+                // This entirely avoids struct padding and Hard Fault crashes
+                uint8_t sig_payload[sizeof(resp->slot) + sizeof(resp->group_id) + NONCE_SIZE];
+                uint32_t offset = 0;
+                
+                memcpy(sig_payload + offset, &resp->slot, sizeof(resp->slot));
+                offset += sizeof(resp->slot);
+                memcpy(sig_payload + offset, &resp->group_id, sizeof(resp->group_id));
+                offset += sizeof(resp->group_id);
+                memcpy(sig_payload + offset, resp->nonce, NONCE_SIZE);
 
-                // Verify the ECDSA signature against the pending nonce
-                if (check_signature(resp->group_id, pending_nonce, NONCE_SIZE, resp->sig, resp->sig_len) != 0) {
+                // Aligned buffer for the signature
+                uint8_t aligned_sig[80] __attribute__((aligned(4))); // Adjust size to match your ECC sig size
+                
+                // Validate sig_len to prevent buffer overflows during memcpy
+                if (resp->sig_len > sizeof(aligned_sig)) {
                     pending_valid = false;
+                    print_debug("SIG LEN TOO BIG FOR BUFFER");
                     send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
+                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
+                    return -1;
+                }
+                memcpy(aligned_sig, resp->sig, resp->sig_len);
+
+                // Verify the ECDSA signature using the packed payload and aligned signature
+                print_debug("CHECKING ECC SIGNATURE");
+                if (check_signature(
+                    resp->group_id, 
+                    sig_payload, 
+                    sizeof(sig_payload), 
+                    aligned_sig, 
+                    resp->sig_len) != 0) {
+                    
+                    pending_valid = false;
                     print_error("RECEIVE: invalid signature");
+                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
+                    send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
                     return -1;
                 }
 
@@ -525,21 +667,25 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
 
                 // Use workspace.recv_resp to assemble the packet
                 memset(&workspace, 0, sizeof(workspace));
-                
+                print_debug("READING FILE");
                 if (read_file(resp->slot, &workspace.recv_resp.file) < 0) {
+                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
                     print_error("Failed to read file");
                     return -1;
                 }
 
                 if (workspace.recv_resp.file.group_id != resp->group_id) {
+                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
                     print_error("RECEIVE: group mismatch");
                     return -1;
                 }
 
+                // [Metadata code remains unchanged]
                 metadata = get_file_metadata(resp->slot);
                 if (metadata == NULL) {
+                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
                     print_error("Getting metadata failed");
                     return -1;
@@ -548,6 +694,7 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                 memcpy(&workspace.recv_resp.uuid, &metadata->uuid, UUID_SIZE);
 
                 write_length = sizeof(receive_response_t);
+                print_debug("SENDING FILE");
                 write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, &workspace.recv_resp, write_length);
 
                 write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);

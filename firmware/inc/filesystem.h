@@ -104,7 +104,7 @@ typedef struct {
     group_id_t group_id;
     char name[MAX_NAME_SIZE];
     uint16_t contents_len;
-    uint8_t contents[MAX_CONTENTS_SIZE];
+    uint8_t contents[MAX_ENCRYPTED_SIZE]; // Added 16 because of padding
 } file_t;
 
 /** @brief Initialize the filesystem
