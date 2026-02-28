@@ -193,11 +193,15 @@ int write(uint16_t pkt_len, uint8_t *buf) {
     memset(&workspace, 0, sizeof(workspace));
 
     if (!check_pin(command->pin)) {
-        wrong_pin_lockout_init(); pin_lockout(); print_error("Invalid pin"); return -1;
+        wrong_pin_lockout_init(); 
+        pin_lockout(); 
+        print_error("Invalid pin"); 
+        return -1;
     }
 
     if (!validate_permission(command->group_id, PERM_WRITE)) {
-        print_error("Invalid permission"); return -1;
+        print_error("Invalid permission"); 
+        return -1;
     }
 
     if (create_file(&workspace.file, command->group_id, command->name, command->contents_len, command->contents) != 0) {
@@ -272,7 +276,7 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
 
     // CRITICAL FIX: Check the command type FIRST
     if (cmd == RECEIVE_ABORT_MSG) {
-        print_error("RECEIVE: peer aborted");
+        // print_error("RECEIVE: peer aborted");
         write_packet(CONTROL_INTERFACE, RECEIVE_MSG, NULL, 0);
         return -1;
     }
@@ -304,7 +308,7 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
         sizeof(aligned_mac)) != 0)
     {
         send_abort(command->read_slot, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
-        print_error("RECEIVE: wrong mac!");
+        // print_error("RECEIVE: wrong mac!");
         write_packet(CONTROL_INTERFACE, RECEIVE_MSG, NULL, 0);
         return -1;
     }
@@ -378,7 +382,7 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     read_packet(TRANSFER_INTERFACE, &cmd, &workspace.recv_resp, &len_recv_msg, sizeof(workspace.recv_resp));
     
     if (cmd == RECEIVE_ABORT_MSG) {
-        print_error("RECEIVE: peer aborted");
+        // print_error("RECEIVE: peer aborted");
         return -1;
     }
     if (cmd != RECEIVE_MSG) {
@@ -536,7 +540,7 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
 
                 // Use workspace.file to check the slot safely
                 if (read_file(req->slot, &workspace.file) < 0) {
-                    print_error("READING FILE FAILED");
+                    // print_error("READING FILE FAILED");
                     send_abort(req->slot, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
                     write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     return -1;
