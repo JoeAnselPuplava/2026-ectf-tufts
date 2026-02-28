@@ -498,7 +498,7 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
             case RECEIVE_ABORT_MSG: {
                 pending_valid = false;
                 write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
-                return 0;
+                return -1;
             }
 
             case INTERROGATE_MSG: {

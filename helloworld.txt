@@ -1,5 +1,1 @@
-<<<<<<< HEAD
-hello world
-=======
 herro world, my name is Jet
->>>>>>> cc140efcd17074dd72c3de391562c83608c085a1
