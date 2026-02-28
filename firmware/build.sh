@@ -11,45 +11,6 @@ BUILD_DIR=/out
 DOCKER_IMAGE=build-hsm
 GLOBAL_SECRETS=/global.secrets
 
-##########################
-# Enter docker container #
-##########################
-
-# if [[ -z "${IN_CONTAINER:-}" ]]; then
-#     echo 'entering docker container'
-
-#     cd .. # at root of code repo
-#     # mkdir -p "$BUILD_DIR"
-#     echo "ARGS: $@"
-#     # bear --version
-#             #   -v ./wolfssl_patch/src/random.c:opt/wolfssl/wolfcrypt/src/random.c:ro \
-#     if docker run \
-#               --rm \
-#               -v ./firmware:/hsm \
-#               -v ."$GLOBAL_SECRETS":/secrets"$GLOBAL_SECRETS":ro \
-#               -v ./build:/out \
-#               -e HSM_PIN="$HSM_PIN" \
-#               -e PERMISSIONS="$PERMISSIONS" \
-#               -e IN_CONTAINER=1 \
-#               "$DOCKER_IMAGE" \
-#             #   bear \
-#             #        --output "${BUILD_DIR}/compile_commands_tmp.json" \
-#             #        -- \
-#             #        ./build.sh "$@"
-#     then
-#         # Only save compile commands if we actually built anything
-#         case "${1:-build}" in
-#             build|all|'')
-#                 sed "s#/hsm#$PWD/firmware#g" \
-#                     "./firmware/$BUILD_DIR/compile_commands_tmp.json" \
-#                     > "./firmware/$BUILD_DIR/compile_commands.json"
-#                 ;;
-#         esac
-#     fi
-
-#     exit 0
-# fi
-
 #####################
 # Toolchain & paths #
 #####################
@@ -75,7 +36,8 @@ CFLAGS=(
     "-I$MSPM0_SDK_INSTALL_DIR/source"
     "-I$MSPM0_SDK_INSTALL_DIR/source/third_party/CMSIS/Core/Include"
     -D__MSPM0L2228__
-    -O2
+    -Os
+    # -O2
     -gdwarf-3
     -mcpu=cortex-m0plus
     -march=thumbv6m
@@ -83,66 +45,28 @@ CFLAGS=(
     -mthumb
 )
 
-# WOLFSSL_DIR=wolfssl
 WOLFSSL_DIR=/opt/wolfssl
 WOLFCRYPT_SRC="$WOLFSSL_DIR/wolfcrypt/src"
 
 WOLFCRYPT_SOURCES=(
     hash.c
-    md5.c
     cryptocb.c
-    sha.c
+    # sha.c
     sha256.c
     cmac.c
-    # --- Add these for ECC ---
-    asn.c       
+    asn.c
     ecc.c
     coding.c 
     aes.c
-    rsa.c
-    tfm.c       # Fast math library required for ECC
-    random.c    # Required for key generation and signing
-    # hmac.c      # Required for HKDF
+    random.c
     wolfmath.c
     memory.c
-    # Speed up
     sp_int.c
     sp_c32.c
     # sp_armthumb.c
+    # sp_cortexm.c
 )
 
-# --- UPDATED CFLAGS ---
-# CFLAGS+=(
-#     -DUSE_FAST_MATH
-#     -DTFM_ECC256
-#     -DFP_MAX_BITS=512
-#     -DWOLFSSL_SMALL_STACK
-
-#     -DTFM_TIMING_RESISTANT     # Safety for timing attacks
-#     -DECC_TIMING_RESISTANT     # Ecc timing protection
-#     -DTFM_TIMING_RESISTANT     # Forces constant-time math operations
-
-#     -DWOLFCRYPT_ONLY           # Only build the wolfCrypt portion
-#     -DHAVE_ECC                 # Enable ECC support
-#     -DHAVE_COMP_KEY            # Enable Compressed (33-byte) Keys
-#     -DWOLFSSL_SECP256R1        # Explicitly enable P-256 Curve
-#     -DWOLFSSL_SHA256           # Ensure SHA256 is linked for KDF
-#     -DECC_TIMING_RESISTANT     # Recommended for security
-#     -DUSE_FAST_MATH            # Enables the 'tfm.c' math library
-#     -DTFM_ECC256               # Optimizes for the 256-bit curves used in eCTF
-#     -DSINGLE_THREADED          # Prevents reliance on pthreads.h
-#     -DNO_FILESYSTEM            # Prevents reliance on standard I/O
-#     -DNO_DEV_RANDOM            # You must provide your own TRNG seed
-#     -DWOLFSSL_USER_IO          # Allows you to define custom I/O if needed
-#     -DWC_NO_DEFAULT_DEVID      # Standard for embedded targets
-#     "-I/opt/wolfssl"           # Ensure the internal headers are reachable
-
-#     -DWOLFSSL_USER_SETTINGS
-
-#     -DWOLFSSL_AES_DIRECT
-#     -DCUSTOM_RAND_GENERATE_SEED_OS=my_trng_seed_gen
-#     "-includeboard_random.h"
-# )
 CFLAGS+=(
     # 1. Include Paths
     "-I./inc"
@@ -150,9 +74,6 @@ CFLAGS+=(
     
     # 2. Enable User Settings
     -DWOLFSSL_USER_SETTINGS
-    
-    # 3. FIX: Enable POSIX standards (Fixes 'strcasecmp' warning)
-    -D_POSIX_C_SOURCE=200809L
     
     # 4. FIX: Silence the 'deprecated' warning from WolfSSL internals
     -Wno-deprecated-declarations
@@ -189,22 +110,14 @@ function build() {
     echo "Compiling sources..."
 
     OBJECTS=()
-    # # cat src/random.c
-    # echo "These are permissions"
-    # echo $PERMISSIONS
+
     python3 secrets_to_c_header.py "/secrets$GLOBAL_SECRETS" $HSM_PIN "$PERMISSIONS"
     echo "Forcing clean build of WolfSSL..."
     rm -f "$WOLFCRYPT_SRC"/*.o
     rm -f "$WOLFSSL_DIR/wolfcrypt"/*.o
-    # mkdir -p "$BUILDDIR/wolfcrypt"
-    # echo "==========="
-    # cd ../opt/wolfssl/
-    # # pwd
-    # echo "==========="
-    # ls src
-    # echo "==========="
+
     for src in src/*.c; do
-        obj="$BUILD_DIR/$(basename "${src%.c}.so")"
+        obj="$BUILD_DIR/$(basename "${src%.c}.o")"
         echo "  CC $src"
         "$CC" "${CFLAGS[@]}" -c "$src" -o "$obj"
         OBJECTS+=("$obj")
@@ -230,7 +143,7 @@ function build() {
         "$BUILD_DIR/$NAME.bin"
 
     echo "Cleaning up intermediate objects..."
-    rm -f $BUILD_DIR/*.so $WOLFSSL_DIR/wolfcrypt/*.o
+    rm -f $BUILD_DIR/*.o $BUILD_DIR/*.map $WOLFSSL_DIR/wolfcrypt/*.o
 
     echo "Build complete:"
     echo "  $BUILD_DIR/$NAME.elf"

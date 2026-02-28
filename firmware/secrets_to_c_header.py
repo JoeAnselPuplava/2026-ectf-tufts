@@ -123,14 +123,12 @@ def secrets_to_c_header(
         f.write(", ".join(f"0x{b:02x}" for b in h))
         f.write("\n};\n\n")
 
-        # # Write Global AES Key
-        # f.write("// Global System AES-128 Key\n")
-        # f.write(f"static const uint8_t GLOBAL_AES_KEY[32] = {_format_key_as_c_array(global_aes_hex, included=True)};\n\n")
-        # Write Global AES Key
-        f.write("// Global System AES-128 Key\n")
+        # Write Interrogate AES Key
+        f.write("// Interrogate System AES-256 Key\n")
         f.write(f"static const uint8_t INTERROGATE_AES_KEY[32] = {_format_key_as_c_array(interrogate_aes_hex, included=True)};\n\n")
-        # Write Global AES Key
-        f.write("// Global System AES-128 Key\n")
+
+        # Write Receive AES Key
+        f.write("// Receive AES-256 Key\n")
         f.write(f"static const uint8_t RECEIVE_AES_KEY[32] = {_format_key_as_c_array(receive_aes_hex, included=True)};\n\n")
 
         # Write Struct Definition for SECP256R1
