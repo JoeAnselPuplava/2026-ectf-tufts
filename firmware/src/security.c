@@ -310,9 +310,7 @@ int sign_data(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* si
 
         const group_secrets_t* secrets = (const group_secrets_t*)get_group_secrets(group_id);
         
-        // FIX: Added curly braces
         if (!secrets || secrets->verify_key[0] == 0) {
-            print_error("secrets->verify_key"); 
             return BAD_FUNC_ARG;
         }
 
@@ -329,9 +327,7 @@ int sign_data(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* si
             ECTF_CURVE_ID 
         );
 
-        // FIX: Added curly braces
         if (ret != 0) {
-            print_error("PRIVATE KEY FAILED"); 
             return ret;
         }
         cached_sign_group_id = group_id;
@@ -340,11 +336,7 @@ int sign_data(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* si
     // 2. Hash the raw input data (ECDSA signs a hash, not the raw text)
     ret = wc_Sha256Hash(input, input_len, hash);
     
-    // FIX: Added curly braces
-    if (ret != 0) {
-        print_error("HASH FAILED"); 
-        return ret;
-    }
+    if (ret != 0) return ret;
 
     // 3. Generate the ECDSA Signature
     ret = wc_ecc_sign_hash(

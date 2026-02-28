@@ -99,7 +99,6 @@ int list(uint16_t pkt_len, uint8_t *buf) {
     if (!check_pin(command->pin)) {
         wrong_pin_lockout_init();
         pin_lockout();
-        print_error("Invalid pin");
         return -1;
     }
 
@@ -127,20 +126,17 @@ int read(uint16_t pkt_len, uint8_t *buf) {
     if (!check_pin(command->pin)) {
         wrong_pin_lockout_init(); 
         pin_lockout(); 
-        print_error("Invalid pin"); 
         return -1;
     }
 
     memset(&workspace, 0, sizeof(workspace));
 
     if (read_file(command->slot, &workspace.file) < 0) {
-        print_error("Failed to read file"); 
         secure_zero(&workspace.file, sizeof(workspace.file)); 
         return -1;
     }
 
     if (!validate_permission(workspace.file.group_id, PERM_READ)) {
-        print_error("Invalid permission"); 
         secure_zero(&workspace.file, sizeof(workspace.file)); 
         return -1;
     }
@@ -163,7 +159,6 @@ int read(uint16_t pkt_len, uint8_t *buf) {
     );
     
     if (ret != 0) {
-        print_error("Decrypt failed");
         secure_zero(&workspace, sizeof(workspace)); 
         return -1;
     }
@@ -195,22 +190,18 @@ int write(uint16_t pkt_len, uint8_t *buf) {
     if (!check_pin(command->pin)) {
         wrong_pin_lockout_init(); 
         pin_lockout(); 
-        print_error("Invalid pin"); 
         return -1;
     }
 
     if (!validate_permission(command->group_id, PERM_WRITE)) {
-        print_error("Invalid permission"); 
         return -1;
     }
 
     if (create_file(&workspace.file, command->group_id, command->name, command->contents_len, command->contents) != 0) {
-        print_error("Error creating file");
         secure_zero(&workspace, sizeof(workspace)); return -1;
     }
 
     if (write_file(command->slot, &workspace.file, command->uuid) < 0) {
-        print_error("Error storing file");
         secure_zero(&workspace, sizeof(workspace)); return -1;
     }
 
@@ -254,7 +245,6 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     if (!check_pin(command->pin)) {
         wrong_pin_lockout_init();
         pin_lockout();
-        print_error("Invalid pin");
         return -1;
     }
 
@@ -276,14 +266,10 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
 
     // CRITICAL FIX: Check the command type FIRST
     if (cmd == RECEIVE_ABORT_MSG) {
-        // print_error("RECEIVE: peer aborted");
-        write_packet(CONTROL_INTERFACE, RECEIVE_MSG, NULL, 0);
         return -1;
     }
     if (cmd != RECEIVE_CHAL_MSG) {
         send_abort(command->read_slot, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
-        print_error("RECEIVE: expected challenge");
-        write_packet(CONTROL_INTERFACE, RECEIVE_MSG, NULL, 0);
         return -1;
     }
 
@@ -308,30 +294,22 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
         sizeof(aligned_mac)) != 0)
     {
         send_abort(command->read_slot, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
-        // print_error("RECEIVE: wrong mac!");
-        write_packet(CONTROL_INTERFACE, RECEIVE_MSG, NULL, 0);
         return -1;
     }
     print_debug("MAC SUCCEEDED");
 
     if (chal.slot != command->read_slot) {
         send_abort(command->read_slot, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
-        print_error("RECEIVE: challenge slot mismatch");
-        write_packet(CONTROL_INTERFACE, RECEIVE_MSG, NULL, 0);
         return -1;
     }
     if (chal.group_id == (group_id_t)0xFFFF) {
         send_abort(chal.slot, chal.group_id, RCV_ABORT_GENERIC);
-        print_error("RECEIVE: invalid slot");
-        write_packet(CONTROL_INTERFACE, RECEIVE_MSG, NULL, 0);
         return -1;
     }
 
     // 3) Local permission check
     if (!has_receive_permission(chal.group_id)) {
         send_abort(chal.slot, chal.group_id, RCV_ABORT_GENERIC);
-        print_error("RECEIVE: no receive permission");
-        write_packet(CONTROL_INTERFACE, RECEIVE_MSG, NULL, 0);
         return -1;
     }
 
@@ -362,8 +340,6 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
         &temp_sig_len) != 0)
     {
         send_abort(chal.slot, chal.group_id, RCV_ABORT_GENERIC);
-        print_error("RECEIVE: SIGNATURE FAILED");
-        write_packet(CONTROL_INTERFACE, RECEIVE_MSG, NULL, 0);
         return -1;
     }
 
@@ -382,12 +358,10 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     read_packet(TRANSFER_INTERFACE, &cmd, &workspace.recv_resp, &len_recv_msg, sizeof(workspace.recv_resp));
     
     if (cmd == RECEIVE_ABORT_MSG) {
-        // print_error("RECEIVE: peer aborted");
         return -1;
     }
     if (cmd != RECEIVE_MSG) {
         send_abort(resp.slot, resp.group_id, RCV_ABORT_GENERIC);
-        print_error("RECEIVE: expected file response");
         return -1;
     }
     
@@ -395,7 +369,6 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     print_debug("WRITE FILE");
     if (write_file(command->write_slot, &workspace.recv_resp.file, workspace.recv_resp.uuid) < 0) {
         send_abort(resp.slot, resp.group_id, RCV_ABORT_GENERIC);
-        print_error("Writing received file failed");
         return -1;
     }
 
@@ -424,7 +397,6 @@ int interrogate(uint16_t pkt_len, uint8_t *buf) {
     if (!check_pin(command->pin)) {
         wrong_pin_lockout_init();
         pin_lockout();
-        print_error("Invalid pin");
         return -1;
     }
 
@@ -448,7 +420,6 @@ int interrogate(uint16_t pkt_len, uint8_t *buf) {
 
     read_packet(TRANSFER_INTERFACE, &cmd, &final_list_buf, &len_recv_msg, sizeof(final_list_buf));
     if (cmd != INTERROGATE_MSG) {
-        print_error("Opcode mismatch");
         return -1;
     }
 
@@ -489,7 +460,6 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
         memset(uart_buf, 0, sizeof(uart_buf));
 
         if (read_packet(TRANSFER_INTERFACE, &cmd, uart_buf, &read_length, sizeof(uart_buf)) != MSG_OK) {
-            print_error("LISTEN: read_packet failed");
             send_abort(pending_slot, pending_group, RCV_ABORT_GENERIC);
             return -1;
         }
@@ -497,7 +467,6 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
         switch (cmd) {
             case RECEIVE_ABORT_MSG: {
                 pending_valid = false;
-                write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                 return -1;
             }
 
@@ -540,9 +509,7 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
 
                 // Use workspace.file to check the slot safely
                 if (read_file(req->slot, &workspace.file) < 0) {
-                    // print_error("READING FILE FAILED");
                     send_abort(req->slot, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
-                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     return -1;
                 }
 
@@ -553,7 +520,6 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                 print_debug("GENERATING PRNG");
                 if (generate_random_bytes(chal.nonce, NONCE_SIZE) != 0) {
                     send_abort(req->slot, chal.group_id, RCV_ABORT_GENERIC);
-                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     secure_zero(&workspace, sizeof(workspace));
                     return -1;
                 }
@@ -574,9 +540,7 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                     temp_mac,
                     &temp_mac_len) != 0)
                 {  
-                    print_error("SIGN FAILED");
                     send_abort(req->slot, chal.group_id, RCV_ABORT_GENERIC);
-                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     secure_zero(&workspace, sizeof(workspace));
                     return -1;
                 }
@@ -604,7 +568,6 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                 if (!pending_valid) {
                     print_debug("RECEIVE: no pending challenge");
                     send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
-                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     return -1;
                 }
                 
@@ -613,7 +576,6 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                     pending_valid = false;
                     print_debug("RECEIVE: response mismatch");
                     send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
-                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     return -1;
                 }
                 
@@ -622,7 +584,6 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                     pending_valid = false;
                     print_debug("RECEIVE: nonce mismatch");
                     send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
-                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     return -1;
                 }
                 
@@ -646,7 +607,6 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                     pending_valid = false;
                     print_debug("SIG LEN TOO BIG FOR BUFFER");
                     send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
-                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     return -1;
                 }
                 memcpy(aligned_sig, resp->sig, resp->sig_len);
@@ -661,8 +621,6 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                     resp->sig_len) != 0) {
                     
                     pending_valid = false;
-                    print_error("RECEIVE: invalid signature");
-                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
                     return -1;
                 }
@@ -673,25 +631,19 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                 memset(&workspace, 0, sizeof(workspace));
                 print_debug("READING FILE");
                 if (read_file(resp->slot, &workspace.recv_resp.file) < 0) {
-                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
-                    print_error("Failed to read file");
                     return -1;
                 }
 
                 if (workspace.recv_resp.file.group_id != resp->group_id) {
-                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
-                    print_error("RECEIVE: group mismatch");
                     return -1;
                 }
 
                 // [Metadata code remains unchanged]
                 metadata = get_file_metadata(resp->slot);
                 if (metadata == NULL) {
-                    write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                     send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
-                    print_error("Getting metadata failed");
                     return -1;
                 }
 
@@ -716,6 +668,5 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
     }
 
     send_abort(pending_slot, pending_group, RCV_ABORT_GENERIC);
-    print_error("LISTEN: handshake timeout");
     return -1;
 }

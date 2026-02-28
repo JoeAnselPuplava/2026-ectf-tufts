@@ -91,6 +91,7 @@ int main(void) {
     char output_buf[128] = {0};
     msg_type_t cmd;
     int result;
+    int ret = 0;
     uint16_t pkt_len;
 
     // initialize the device
@@ -98,8 +99,9 @@ int main(void) {
 
     // process commands forever
     while (1) {
+        ret = 0;
         print_debug("Ready\n");
-
+        
         STATUS_LED_ON();
 
         pkt_len = 0;
@@ -127,45 +129,45 @@ int main(void) {
 
         // Handle the requested command
         switch (cmd) {
-
         // Handle list command
         case LIST_MSG:
             // pin_lockout();
-            list(pkt_len, uart_buf);
-            print_debug("List command complete\n");
+            ret = list(pkt_len, uart_buf);
             break;
             
             // Handle read command
             case READ_MSG:
-            print_debug("Read command start\n");
-            read(pkt_len, uart_buf);
+            ret = read(pkt_len, uart_buf);
             break;
 
         // Handle write command
         case WRITE_MSG:
-            write(pkt_len, uart_buf);
+            ret = write(pkt_len, uart_buf);
             break;
 
         // Handle receive command
         case RECEIVE_MSG:
-            receive(pkt_len, uart_buf);
+            ret = receive(pkt_len, uart_buf);
             break;
 
         // Handle interrogate command
         case INTERROGATE_MSG:
-            interrogate(pkt_len, uart_buf);
+            ret = interrogate(pkt_len, uart_buf);
             break;
 
         // Handle listen command
         case LISTEN_MSG:
-            listen(pkt_len, uart_buf);
+            ret = listen(pkt_len, uart_buf);
             break;
 
         // Handle bad command
         default:
-            sprintf(output_buf, "Invalid Command: %c\n", cmd);
-            print_error(output_buf);
+            print_error("ERROR");
             break;
+        }
+        
+        if (ret != 0) {
+            print_error("ERROR");
         }
     }
 }
