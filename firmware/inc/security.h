@@ -131,27 +131,19 @@ int sign_data(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* si
  */
 int check_signature(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t sig_len);
 
-/**
- * @brief Encrypts an interrogate request using AES-CBC and a pre-shared key.
- *
- * Serializes, pads, and encrypts the permissions request. The randomly 
- * generated IV is prepended to the ciphertext.
- *
- * @param request     Pointer to the plaintext interrogation request structure.
- * @param enc_request Pointer to the buffer where the IV + ciphertext will be written.
- * @return 0 on success, negative error code on failure.
+/** * @brief Encrypts list of permissions sent by interrogating HSM to listening HSM.
+ * 
+ * @param request Pointer to the request containg the permissions list 
+ * @param enc_request Pointer to buffer where encrypted request should be stored
+ * @return 0 if encryption is successful, non-zero on error
  */
 uint8_t encrypt_perms(interrogate_request_t *request, uint8_t *enc_request); 
 
-/**
- * @brief Decrypts an interrogate request using AES-CBC and a pre-shared key.
- *
- * Extracts the IV from the header, decrypts the ciphertext, and deserializes 
- * the payload back into an interrogation request structure.
- *
- * @param request     Pointer to the structure to populate with decrypted permissions.
- * @param enc_request Pointer to the encrypted payload (IV + ciphertext).
- * @return 0 on success, negative error code on failure.
+/** * @brief Decrypts list of permissions received by listening HSM from interrogating HSM.
+ * 
+ * @param request Pointer to the struct where the decrypted request should be stored 
+ * @param enc_request Pointer to buffer contiaing the encrypted request 
+ * @return 0 if decryption is successful, non-zero on error
  */
 uint8_t decrypt_perms(interrogate_request_t *request, uint8_t *enc_request); 
 
