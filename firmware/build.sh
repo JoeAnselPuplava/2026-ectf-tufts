@@ -36,8 +36,8 @@ CFLAGS=(
     "-I$MSPM0_SDK_INSTALL_DIR/source"
     "-I$MSPM0_SDK_INSTALL_DIR/source/third_party/CMSIS/Core/Include"
     -D__MSPM0L2228__
-    -Os
-    # -O2
+    # -Os
+    -O2
     -gdwarf-3
     -mcpu=cortex-m0plus
     -march=thumbv6m
@@ -51,7 +51,6 @@ WOLFCRYPT_SRC="$WOLFSSL_DIR/wolfcrypt/src"
 WOLFCRYPT_SOURCES=(
     hash.c
     cryptocb.c
-    # sha.c
     sha256.c
     cmac.c
     asn.c
@@ -63,8 +62,6 @@ WOLFCRYPT_SOURCES=(
     memory.c
     sp_int.c
     sp_c32.c
-    # sp_armthumb.c
-    # sp_cortexm.c
 )
 
 CFLAGS+=(
@@ -81,7 +78,7 @@ CFLAGS+=(
     # 5. Ensure your RNG prototype is seen everywhere
     "-includeboard_random.h"
 )
-# CFLAGS+=("-I/opt/wolfssl")
+
 
 LFLAGS=(
     "-l$MSPM0_SDK_INSTALL_DIR/source/ti/drivers/lib/ticlang/m0p/drivers_mspm0l122x_l222x.a"

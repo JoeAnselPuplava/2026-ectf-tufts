@@ -14,7 +14,12 @@
 #include <wolfssl/wolfcrypt/random.h>
 #include <host_messaging.h>
 
+/**
+ * @brief Fills a buffer with entropy using TRNG
+ * * @param output Pointer to the buffer to receive random bytes.
+ * @param sz     Number of bytes to generate.
+ * @return int   0 on success, negative error code on timeout or null pointer.
+ */
 int mspm0_trng_seed(byte* output, word32 sz);
-// int my_trng_seed_gen(unsigned char* output, unsigned int sz);
 
 #endif //__BOARD_RANDOM_H__

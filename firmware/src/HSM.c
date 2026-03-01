@@ -26,48 +26,6 @@
  **********************************************************/
 
 static unsigned char uart_buf[MAX_MSG_SIZE];
-/**********************************************************
- ******************** HELPER FUNCTIONS ********************
- **********************************************************/
-
-/* Code between this #ifdef and the subsequent #endif will
-*  be ignored by the compiler if CRYPTO_EXAMPLE is not set in
-*  the projectk.mk file. */
-#ifdef CRYPTO_EXAMPLE
-void crypto_example(void) {
-    // Example of how to utilize included simple_crypto.h
-
-    // This string is 16 bytes long including null terminator
-    // This is the block size of included symmetric encryption
-    char *data = "Crypto Example!";
-    uint8_t ciphertext[BLOCK_SIZE];
-    uint8_t key[KEY_SIZE];
-    uint8_t hash_out[HASH_SIZE];
-    uint8_t decrypted[BLOCK_SIZE];
-
-    char output_buf[128] = {0};
-
-    // Zero out the key
-    bzero(key, BLOCK_SIZE);
-
-    // Encrypt example data and print out
-    encrypt_sym((uint8_t*)data, BLOCK_SIZE, key, ciphertext);
-    print_debug("Encrypted data: \n");
-    print_hex_debug(ciphertext, BLOCK_SIZE);
-
-    // Hash example encryption results
-    hash(ciphertext, BLOCK_SIZE, hash_out);
-
-    // Output hash result
-    print_debug("Hash result: \n");
-    print_hex_debug(hash_out, HASH_SIZE);
-
-    // Decrypt the encrypted message and print out
-    decrypt_sym(ciphertext, BLOCK_SIZE, key, decrypted);
-    sprintf(output_buf, "Decrypted message: %s\n", decrypted);
-    print_debug(output_buf);
-}
-#endif  //CRYPTO_EXAMPLE
 
 /**********************************************************
  ********************* CORE FUNCTIONS *********************
@@ -108,7 +66,6 @@ int main(void) {
         result = read_packet(CONTROL_INTERFACE, &cmd, uart_buf, &pkt_len, sizeof(uart_buf));
 
         if (result != MSG_OK) {
-            // STATUS_LED_OFF();
             switch (result)
             {
             case MSG_BAD_PTR:
@@ -131,12 +88,11 @@ int main(void) {
         switch (cmd) {
         // Handle list command
         case LIST_MSG:
-            // pin_lockout();
             ret = list(pkt_len, uart_buf);
             break;
-            
-            // Handle read command
-            case READ_MSG:
+
+        // Handle read command
+        case READ_MSG:
             ret = read(pkt_len, uart_buf);
             break;
 

@@ -98,7 +98,7 @@ typedef struct {
     slot_t slot;
     group_id_t group_id;
     uint8_t nonce[NONCE_SIZE];
-    uint8_t mac[16]; // NEW: Holds the AES-CMAC tag to prevent oracle attacks
+    uint8_t mac[16];
     uint32_t mac_len;
 } receive_challenge_t;
 
@@ -112,9 +112,9 @@ typedef struct {
 } receive_chalresp_t;
 
 typedef struct {
-    slot_t slot;       // optional context (can set to 0xFF if you want)
-    group_id_t group;  // optional context (can set to 0xFFFF if unknown)
-    uint8_t reason;    // optional
+    slot_t slot;
+    group_id_t group;
+    uint8_t reason;
 } receive_abort_t;
 
 /**********************************************************

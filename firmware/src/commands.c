@@ -50,7 +50,9 @@ void generate_list_files(list_response_t *file_list) {
 
             file_list->metadata[file_list->n_files].slot = i;
             file_list->metadata[file_list->n_files].group_id = workspace.file.group_id;
-            strcpy(file_list->metadata[file_list->n_files].name, (char *)&workspace.file.name);
+            // strcpy(file_list->metadata[file_list->n_files].name, (char *)&workspace.file.name);
+            memcpy(file_list->metadata[file_list->n_files].name, workspace.file.name, MAX_NAME_SIZE);
+            file_list->metadata[file_list->n_files].name[MAX_NAME_SIZE - 1] = '\0';
             file_list->n_files++;
         }
     }
@@ -58,17 +60,25 @@ void generate_list_files(list_response_t *file_list) {
     secure_zero(&workspace.file, sizeof(workspace.file)); 
 }
 
+/**
+ * @brief Filters a list of files based on provided group permissions.
+ * * @param file_list           The original generated list of files.
+ * @param validated_file_list The output list containing only permitted files.
+ * @param perms               The permissions request payload to validate against.
+ */
 void validate_list_files(list_response_t *file_list, list_response_t *validated_file_list, interrogate_request_t *perms) {
     validated_file_list->n_files = 0; 
 
     for (uint8_t i = 0; i < file_list->n_files; i++) {
-        for (uint8_t j = 0; j < MAX_PERMS; j++) { // TODO: replace MAX_PERMS with perm size if time cutdown needed 
+        for (uint8_t j = 0; j < MAX_PERMS; j++) {
             if (file_list->metadata[i].group_id == perms->permissions[j].group_id) {
                 // verify that requesting HSM has receive permission 
                 if (perms->permissions[j].receive) {
                     validated_file_list->metadata[validated_file_list->n_files].slot = file_list->metadata[i].slot;
                     validated_file_list->metadata[validated_file_list->n_files].group_id = file_list->metadata[i].group_id;
-                    strcpy(validated_file_list->metadata[validated_file_list->n_files].name, file_list->metadata[i].name); // TODO: come replace strcpy
+                    // strcpy(validated_file_list->metadata[validated_file_list->n_files].name, file_list->metadata[i].name); // TODO: come replace strcpy
+                    memcpy(validated_file_list->metadata[validated_file_list->n_files].name, file_list->metadata[i].name, MAX_NAME_SIZE);
+                    validated_file_list->metadata[validated_file_list->n_files].name[MAX_NAME_SIZE - 1] = '\0';
                     validated_file_list->n_files++; 
                 }
             }
@@ -102,7 +112,6 @@ int list(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
-    print_debug("In list function\n");
     // write success packet with list
     pkt_len_t length = LIST_PKT_LEN(file_list.n_files);
     write_packet(CONTROL_INTERFACE, LIST_MSG, &file_list, length);
@@ -119,7 +128,6 @@ int list(uint16_t pkt_len, uint8_t *buf) {
 */
 int read(uint16_t pkt_len, uint8_t *buf) {
     (void)pkt_len;
-    print_debug("READING A FILE");
     
     read_command_t *command = (read_command_t*)buf;
     
@@ -163,12 +171,11 @@ int read(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
     
-    // 3. Assemble the perfectly aligned header at the top of the union
+    // Assemble the perfectly aligned header at the top of the union
     memcpy(workspace.read_resp.name, temp_name, MAX_NAME_SIZE);
 
     pkt_len_t length = MAX_NAME_SIZE + plain_len;
     write_packet(CONTROL_INTERFACE, READ_MSG, &workspace.read_resp, length);
-    print_debug("Sent read message");
 
     secure_zero(&workspace, sizeof(workspace));
     return 0;
@@ -211,7 +218,15 @@ int write(uint16_t pkt_len, uint8_t *buf) {
 }
 
 
-
+/**
+ * @brief Checks if the local HSM has receive permission for a specific group.
+ *
+ * Scans the global_permissions array to verify if the receive flag 
+ * is set for the requested group ID.
+ *
+ * @param gid The group ID to check.
+ * @return true if receive permission is granted, false otherwise.
+ */
 static bool has_receive_permission(group_id_t gid) {
     for (uint8_t i = 0; i < MAX_PERMS; i++) {
         if (global_permissions[i].group_id == gid) {
@@ -221,6 +236,16 @@ static bool has_receive_permission(group_id_t gid) {
     return false;
 }
 
+/**
+ * @brief Sends an abort message over the transfer interface.
+ *
+ * Constructs and transmits a RECEIVE_ABORT_MSG packet to inform the 
+ * communicating HSM that the current handshake or transfer has failed.
+ *
+ * @param slot   The slot number involved in the failed operation.
+ * @param group  The group ID involved in the failed operation.
+ * @param reason The specific error code/reason for the abort.
+ */
 static void send_abort(slot_t slot, group_id_t group, uint8_t reason) {
     receive_abort_t a;
     memset(&a, 0, sizeof(a));
@@ -230,6 +255,13 @@ static void send_abort(slot_t slot, group_id_t group, uint8_t reason) {
     write_packet(TRANSFER_INTERFACE, RECEIVE_ABORT_MSG, &a, sizeof(a));
 }
 
+/** @brief Perform the receive operation
+ *
+ *  @param pkt_len The length of the incoming packet
+ *  @param buf A pointer the incoming message buffer
+ *
+ * @return 0 upon success. A negative value on error.
+*/
 int receive(uint16_t pkt_len, uint8_t *buf) {
     (void)pkt_len;
 
@@ -253,18 +285,18 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     memset(&resp, 0, sizeof(resp));
     memset(&workspace, 0, sizeof(workspace)); // Clean workspace
 
-    // 1) Send slot request
+    // Send slot request
     req.slot = command->read_slot;
     print_debug("SENDING SLOT");
     write_packet(TRANSFER_INTERFACE, RECEIVE_REQ_MSG, &req, sizeof(req));
     
-    // 2) Read challenge
+    // Read challenge
     len_recv_msg = 0;
     print_debug("WAITING FOR CHALLENGE SLOT");
     read_packet(TRANSFER_INTERFACE, &cmd, &chal, &len_recv_msg, sizeof(chal));
     print_debug("GOT THE CHALLENGE");
 
-    // CRITICAL FIX: Check the command type FIRST
+    // Check the command type
     if (cmd == RECEIVE_ABORT_MSG) {
         return -1;
     }
@@ -273,7 +305,7 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
-    // CRITICAL FIX: Pack the data to avoid padding, and align the MAC
+    // Pack the data to avoid padding, and align the MAC
     uint8_t chal_payload[sizeof(chal.slot) + sizeof(chal.group_id) + NONCE_SIZE];
     uint32_t offset = 0;
     memcpy(chal_payload + offset, &chal.slot, sizeof(chal.slot));
@@ -296,7 +328,6 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
         send_abort(command->read_slot, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
         return -1;
     }
-    print_debug("MAC SUCCEEDED");
 
     if (chal.slot != command->read_slot) {
         send_abort(command->read_slot, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
@@ -307,19 +338,19 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
-    // 3) Local permission check
+    // Local permission check
     if (!has_receive_permission(chal.group_id)) {
         send_abort(chal.slot, chal.group_id, RCV_ABORT_GENERIC);
         return -1;
     }
 
-    // 4) Build challenge response (ECC sign)
+    // Build challenge response (ECC sign)
     resp.slot = chal.slot;
     resp.group_id = chal.group_id;
     memcpy(resp.nonce, chal.nonce, NONCE_SIZE);
     resp.sig_len = 0;
 
-    // CRITICAL FIX: Pack the response data to avoid padding issues during signing
+    // Pack the response data to avoid padding issues during signing
     uint8_t resp_payload[sizeof(resp.slot) + sizeof(resp.group_id) + NONCE_SIZE];
     offset = 0;
     memcpy(resp_payload + offset, &resp.slot, sizeof(resp.slot));
@@ -328,7 +359,7 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     offset += sizeof(resp.group_id);
     memcpy(resp_payload + offset, resp.nonce, NONCE_SIZE);
 
-    uint8_t aligned_sig[80] __attribute__((aligned(4))); // Adjust size to your ECDSA max
+    uint8_t aligned_sig[80] __attribute__((aligned(4))); // Adjust size
     uint32_t temp_sig_len = 80;
 
     // Ecc signature
@@ -347,13 +378,11 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     memcpy(resp.sig, aligned_sig, temp_sig_len);
     resp.sig_len = temp_sig_len;
 
-    print_debug("Sending response to listen HSM");
     write_packet(TRANSFER_INTERFACE, RECEIVE_CHALRESP_MSG, &resp, sizeof(resp));
     
     // 5) Listener sends back the file
     len_recv_msg = 0x0;
     
-    print_debug("WAITING FOR FILE");
     // Read directly into the workspace union
     read_packet(TRANSFER_INTERFACE, &cmd, &workspace.recv_resp, &len_recv_msg, sizeof(workspace.recv_resp));
     
@@ -366,7 +395,6 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     }
     
     // Write the file from the workspace union
-    print_debug("WRITE FILE");
     if (write_file(command->write_slot, &workspace.recv_resp.file, workspace.recv_resp.uuid) < 0) {
         send_abort(resp.slot, resp.group_id, RCV_ABORT_GENERIC);
         return -1;
@@ -441,13 +469,12 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
     pkt_len_t write_length, read_length;
 
     interrogate_request_t inter_req; 
-    uint8_t enc_request[AES_IV_SIZE + REQUEST_PADDED_SIZE];
+    uint8_t enc_request[AES_IV_SIZE + REQUEST_PADDED_SIZE]; // 16 + 48 = 64 bytes
     list_response_t file_list;
     list_response_t validated_file_list; 
 
     const filesystem_entry_t *metadata;
     
-    // THE FIX: Removed local receive_response_t recv_resp!
 
     // RECEIVE handshake state
     bool pending_valid = false;
@@ -476,7 +503,6 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                 memset(enc_request, 0, sizeof(enc_request));
 
                 // get the request 
-                // enc_request = (uint8_t *)uart_buf; 
                 memcpy(enc_request, (uint8_t *)uart_buf, sizeof(enc_request));
                 decrypt_perms(&inter_req, enc_request);
 
@@ -559,8 +585,6 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
             }
 
             case RECEIVE_CHALRESP_MSG: {
-                // Assuming your UART receive framework gives you the received length
-                // if (uart_len < sizeof(receive_chalresp_t)) { return -1; }
 
                 print_debug("RECEIVE_CHALRESP_MSG");
                 receive_chalresp_t *resp = (receive_chalresp_t *)uart_buf;
