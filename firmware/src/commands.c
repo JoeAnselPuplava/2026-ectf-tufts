@@ -50,7 +50,6 @@ void generate_list_files(list_response_t *file_list) {
 
             file_list->metadata[file_list->n_files].slot = i;
             file_list->metadata[file_list->n_files].group_id = workspace.file.group_id;
-            // strcpy(file_list->metadata[file_list->n_files].name, (char *)&workspace.file.name);
             memcpy(file_list->metadata[file_list->n_files].name, workspace.file.name, MAX_NAME_SIZE);
             file_list->metadata[file_list->n_files].name[MAX_NAME_SIZE - 1] = '\0';
             file_list->n_files++;
@@ -62,7 +61,8 @@ void generate_list_files(list_response_t *file_list) {
 
 /**
  * @brief Filters a list of files based on provided group permissions.
- * * @param file_list           The original generated list of files.
+ * 
+ * @param file_list           The original generated list of files.
  * @param validated_file_list The output list containing only permitted files.
  * @param perms               The permissions request payload to validate against.
  */
@@ -75,9 +75,7 @@ void validate_list_files(list_response_t *file_list, list_response_t *validated_
                 // verify that requesting HSM has receive permission 
                 if (perms->permissions[j].receive) {
                     validated_file_list->metadata[validated_file_list->n_files].slot = file_list->metadata[i].slot;
-                    validated_file_list->metadata[validated_file_list->n_files].group_id = file_list->metadata[i].group_id;
-                    // strcpy(validated_file_list->metadata[validated_file_list->n_files].name, file_list->metadata[i].name); // TODO: come replace strcpy
-                    memcpy(validated_file_list->metadata[validated_file_list->n_files].name, file_list->metadata[i].name, MAX_NAME_SIZE);
+                    validated_file_list->metadata[validated_file_list->n_files].group_id = file_list->metadata[i].group_id;                    memcpy(validated_file_list->metadata[validated_file_list->n_files].name, file_list->metadata[i].name, MAX_NAME_SIZE);
                     validated_file_list->metadata[validated_file_list->n_files].name[MAX_NAME_SIZE - 1] = '\0';
                     validated_file_list->n_files++; 
                 }
@@ -445,7 +443,6 @@ int interrogate(uint16_t pkt_len, uint8_t *buf) {
     len_recv_msg = 0xffff;
 
     // recieve the response message
-
     read_packet(TRANSFER_INTERFACE, &cmd, &final_list_buf, &len_recv_msg, sizeof(final_list_buf));
     if (cmd != INTERROGATE_MSG) {
         return -1;

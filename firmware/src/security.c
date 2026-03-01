@@ -382,6 +382,7 @@ int check_signature(uint16_t group_id, uint8_t* input, uint32_t input_len,  uint
     return 0; // Signature is VALID
 }
 
+// helper that serializes individual permissions for encryption in encrypt_permissions 
 static void serialize_permission(uint8_t *out, group_permission_t *perm) {
     // group_id in big-endian
     out[0] = (perm->group_id >> 8) & 0xFF;
@@ -392,6 +393,7 @@ static void serialize_permission(uint8_t *out, group_permission_t *perm) {
     out[4] = perm->receive ? 1 : 0;
 }
 
+// helper that deserializes individual permissions after decryption in decrypt_permissions 
 static void deserialize_permission(const uint8_t *in, group_permission_t *perm) {
     // group_id was big-endian
     perm->group_id = ((uint16_t)in[0] << 8) | (uint16_t)in[1];
@@ -401,6 +403,7 @@ static void deserialize_permission(const uint8_t *in, group_permission_t *perm) 
     perm->receive = in[4] ? true : false;
 }
 
+// helper that serializes permissions list for encryption in encrypt_permissions 
 static void serialize_request(uint8_t *buffer, interrogate_request_t *req) {
     uint32_t offset = 0;
 
@@ -410,6 +413,7 @@ static void serialize_request(uint8_t *buffer, interrogate_request_t *req) {
     }
 }
 
+// helper that deserializes permissions list for decryption in decrypt_permissions 
 static void deserialize_request(const uint8_t *buffer, interrogate_request_t *req) {
     uint32_t offset = 0;
 
@@ -420,6 +424,7 @@ static void deserialize_request(const uint8_t *buffer, interrogate_request_t *re
     }
 }
 
+// helper that pads serialized permissions list for encryption in encrypt_permissions 
 static void pad_request(uint8_t *buffer) {
     for (uint32_t i = 0; i < REQUEST_PAD_LEN; i++)
         buffer[REQUEST_SERIALIZED_SIZE + i] = REQUEST_PAD_LEN; 

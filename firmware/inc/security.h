@@ -112,8 +112,20 @@ int sign_data(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* si
  */
 int check_signature(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t sig_len);
 
+/** * @brief Encrypts list of permissions sent by interrogating HSM to listening HSM.
+ * 
+ * @param request Pointer to the request containg the permissions list 
+ * @param enc_request Pointer to buffer where encrypted request should be stored
+ * @return 0 if encryption is successful, non-zero on error
+ */
 uint8_t encrypt_perms(interrogate_request_t *request, uint8_t *enc_request); 
 
+/** * @brief Decrypts list of permissions received by listening HSM from interrogating HSM.
+ * 
+ * @param request Pointer to the struct where the decrypted request should be stored 
+ * @param enc_request Pointer to buffer contiaing the encrypted request 
+ * @return 0 if decryption is successful, non-zero on error
+ */
 uint8_t decrypt_perms(interrogate_request_t *request, uint8_t *enc_request); 
 
 /** * @brief Generates an AES-CMAC authentication tag.
