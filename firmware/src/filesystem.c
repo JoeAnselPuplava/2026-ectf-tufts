@@ -132,6 +132,7 @@ int init_fs() {
  * * @return true if the slot contains an active file, false otherwise.
  */
 bool is_slot_in_use(slot_t slot) {
+    if (slot < 0 || slot >= MAX_FILE_COUNT) return false;
     uint32_t in_use_flag = 0;
     int flash_addr = FILE_ALLOCATION_TABLE[slot].flash_addr;
 

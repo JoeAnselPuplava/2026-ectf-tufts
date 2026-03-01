@@ -136,7 +136,7 @@ int read(uint16_t pkt_len, uint8_t *buf) {
     }
 
     memset(&workspace, 0, sizeof(workspace));
-
+    if (!is_slot_in_use(command->slot)) return -1;
     if (read_file(command->slot, &workspace.file) < 0) {
         secure_zero(&workspace.file, sizeof(workspace.file)); 
         return -1;
@@ -524,6 +524,11 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                 memset(&chal, 0, sizeof(chal));
                 chal.slot = req->slot;
                 memset(&workspace, 0, sizeof(workspace));
+                
+                if (!is_slot_in_use(req->slot)) {
+                    send_abort(req->slot, (group_id_t)0xFFFF, RCV_ABORT_GENERIC);
+                    return -1;
+                }
 
                 // Use workspace.file to check the slot safely
                 if (read_file(req->slot, &workspace.file) < 0) {
@@ -632,6 +637,12 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
 
                 // Use workspace.recv_resp to assemble the packet
                 memset(&workspace, 0, sizeof(workspace));
+
+                if (!is_slot_in_use(resp->slot)) {
+                    send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC)
+                    return -1;
+                }
+
                 if (read_file(resp->slot, &workspace.recv_resp.file) < 0) {
                     send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
                     return -1;
