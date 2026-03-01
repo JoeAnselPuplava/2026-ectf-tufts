@@ -639,7 +639,7 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                 memset(&workspace, 0, sizeof(workspace));
 
                 if (!is_slot_in_use(resp->slot)) {
-                    send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC)
+                    send_abort(resp->slot, resp->group_id, RCV_ABORT_GENERIC);
                     return -1;
                 }
 
