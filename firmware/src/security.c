@@ -46,7 +46,7 @@ static uint8_t prng_seed[32];
 static uint32_t prng_counter = 0;
 static bool prng_seeded = false;
 
-// --- Initialization ---
+
 int init_crypto_engine(void) {
     if (!crypto_initialized) {
         if (wc_InitRng(&global_rng) != 0) {
@@ -57,7 +57,18 @@ int init_crypto_engine(void) {
     return 0;
 }
 
-// --- Existing Functions ---
+/**
+ * @brief Compares two byte arrays in constant time.
+ *
+ * Prevents timing side-channel attacks by ensuring the execution time 
+ * depends only on the length of the arrays, not their contents. 
+ * Critical for verifying MACs, hashes, and PINs securely.
+ *
+ * @param a   Pointer to the first byte array.
+ * @param b   Pointer to the second byte array.
+ * @param len The number of bytes to compare.
+ * @return true if the arrays are identical, false otherwise.
+ */
 bool constant_time_compare(uint8_t* a, const uint8_t* b, size_t len) {
     uint8_t diff = 0;
     for (size_t i = 0; i < len; i++) diff |= a[i] ^ b[i];
@@ -65,7 +76,6 @@ bool constant_time_compare(uint8_t* a, const uint8_t* b, size_t len) {
 }
 
 bool check_pin(unsigned char *pin) {
-    print_debug(pin);
     uint8_t hash[WC_SHA256_DIGEST_SIZE] = {0};
     wc_Sha256 sha;
     if (wc_InitSha256(&sha) != 0) return false;
@@ -103,8 +113,6 @@ bool validate_permission(uint16_t group_id, permission_enum_t perm) {
 int encrypt_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, uint8_t* output, uint32_t* output_len) {
     ecc_key ephemeral_key;
     Aes aes;
-    // static ecc_key ephemeral_key;
-    // static Aes aes;
 
     int ret;
     uint8_t shared_secret[32]; 
@@ -116,7 +124,7 @@ int encrypt_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, ui
     if (init_crypto_engine() != 0) return -1;
     if (!validate_permission(group_id, PERM_WRITE)) return PERMISSION_DENIED;
 
-    // 1. KEY CACHING LOGIC
+    // key caching logic
     if (group_id != cached_encrypt_group_id) {
         if (cached_encrypt_group_id != 0xFFFF) wc_ecc_free(&cached_encrypt_group_key);
         
@@ -125,8 +133,6 @@ int encrypt_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, ui
 
         wc_ecc_init(&cached_encrypt_group_key);
         
-        // --- THE FIX ---
-        // Revert this back to x963, which is compiled in by default
         ret = wc_ecc_import_x963(secrets->write_key, sizeof(secrets->write_key), &cached_encrypt_group_key);
         
         if (ret != 0) return ret;
@@ -174,44 +180,27 @@ int decrypt_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, ui
     uint8_t aes_key[WC_SHA256_DIGEST_SIZE];
     uint32_t header_len = 65 + AES_IV_SIZE;
 
-    // We will use this to format our debug strings
-    char local_dbg[128]; 
-
     if (init_crypto_engine() != 0) return -1;
     if (!validate_permission(group_id, PERM_READ)) return PERMISSION_DENIED;
     
     // 1. KEY CACHING LOGIC
     if (group_id != cached_decrypt_group_id) {
-        print_debug("----------------------------------------");
-        sprintf(local_dbg, "decrypt_data: Loading keys for Group 0x%04X", group_id);
-        print_debug(local_dbg);
         
         if (cached_decrypt_group_id != 0xFFFF) wc_ecc_free(&cached_decrypt_group_priv_key);
 
         const group_secrets_t* secrets = (const group_secrets_t*)get_group_secrets(group_id);
-        if (!secrets) {
-            print_debug("decrypt_data: get_group_secrets returned NULL!");
-            return BAD_FUNC_ARG;
-        }
-
-        // --- THE DEBUG PROBES ---
-        sprintf(local_dbg, "DEBUG: read_key[0]=0x%02X, write_key[0]=0x%02X", secrets->read_key[0], secrets->write_key[0]);
-        print_debug(local_dbg);
+        if (!secrets) return BAD_FUNC_ARG;
 
         if (secrets->read_key[0] == 0x00 && secrets->read_key[1] == 0x00) {
-            print_debug("CRITICAL FAIL: Private read_key is all zeros! Device lacks PERM_READ.");
+            return -1;
         }
         if (secrets->write_key[0] == 0x00 && secrets->write_key[1] == 0x00) {
-            print_debug("CRITICAL FAIL: Public write_key is all zeros! PCT will fail (-173).");
-            print_debug("               Did you run gen_secrets.py and re-flash the board?");
+            return -1;
         }
 
         wc_ecc_init(&cached_decrypt_group_priv_key);
 
         wc_ecc_set_rng(&cached_decrypt_group_priv_key, &global_rng);
-
-        print_debug("decrypt_data: Calling wc_ecc_import_private_key_ex...");
-        
 
         ret = wc_ecc_import_private_key_ex(
             secrets->read_key, sizeof(secrets->read_key),     
@@ -220,34 +209,22 @@ int decrypt_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, ui
             ECTF_CURVE_ID 
         );
 
-        sprintf(local_dbg, "decrypt_data: Import returned %d", ret);
-        print_debug(local_dbg);
 
         if (ret != 0) return ret;
         
-        print_debug("decrypt_data: PCT Passed! Key cached.");
-        print_debug("----------------------------------------");
         cached_decrypt_group_id = group_id;
     }
 
-    // 2. Import Ephemeral Public Key from Input
+    // Import Ephemeral Public Key from Input
     wc_ecc_init(&ephemeral_pub_key);
     ret = wc_ecc_import_x963_ex(input, 65, &ephemeral_pub_key, ECTF_CURVE_ID);
-    if (ret != 0) {
-        sprintf(local_dbg, "decrypt_data: Ephemeral Pub Import failed %d", ret);
-        print_debug(local_dbg);
-        goto cleanup;
-    }
+    if (ret != 0) goto cleanup;
 
-    // 3. Derive Shared Secret (ECDH)
+    // Derive Shared Secret (ECDH)
     ret = wc_ecc_shared_secret(&cached_decrypt_group_priv_key, &ephemeral_pub_key, shared_secret, &secret_len);
-    if (ret != 0) {
-        sprintf(local_dbg, "decrypt_data: ECDH Shared Secret failed %d", ret);
-        print_debug(local_dbg);
-        goto cleanup;
-    }
+    if (ret != 0) goto cleanup;
 
-    // 4. KDF and Decrypt
+    // KDF and Decrypt
     wc_Sha256Hash(shared_secret, secret_len, aes_key);
 
     const uint8_t* iv = input + 65;
@@ -259,10 +236,6 @@ int decrypt_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, ui
     
     if (ret == 0) {
         *output_len = cipher_len;
-        print_debug("decrypt_data: AES Decrypt SUCCESS!");
-    } else {
-        sprintf(local_dbg, "decrypt_data: AES Decrypt failed %d", ret);
-        print_debug(local_dbg);
     }
 
 cleanup:
@@ -276,15 +249,13 @@ cleanup:
 int sign_data(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t* sig_len) {
     static ecc_key cached_sign_key;
     static uint16_t cached_sign_group_id = 0xFFFF;
-    char local_dbg[128]; 
     int ret;
     uint8_t hash[WC_SHA256_DIGEST_SIZE];
 
     if (init_crypto_engine() != 0) return -1;
     if (!validate_permission(group_id, PERM_RECEIVE)) return PERMISSION_DENIED;
 
-    // 1. KEY CACHING LOGIC
-    print_debug("KEY CACHING LOGIC");
+    // key caching logic
     if (group_id != cached_sign_group_id) {
         if (cached_sign_group_id != 0xFFFF) wc_ecc_free(&cached_sign_key);
 
@@ -326,9 +297,8 @@ int sign_data(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* si
         sig_len, 
         &global_rng, 
         &cached_sign_key);
-    sprintf(local_dbg, "sign ret: %d", ret);
-    print_debug(local_dbg);
-    return ret; // 0 on success
+
+    return ret;
 }
 
 int check_signature(uint16_t group_id, uint8_t* input, uint32_t input_len,  uint8_t* signature, uint32_t sig_len) {
@@ -341,7 +311,7 @@ int check_signature(uint16_t group_id, uint8_t* input, uint32_t input_len,  uint
 
     if (init_crypto_engine() != 0) return -1;
 
-    // 1. KEY CACHING LOGIC
+    // key caching logic
     if (group_id != cached_check_group_id) {
         if (cached_check_group_id != 0xFFFF) wc_ecc_free(&cached_check_key);
 
@@ -382,6 +352,9 @@ int check_signature(uint16_t group_id, uint8_t* input, uint32_t input_len,  uint
     return 0; // Signature is VALID
 }
 
+/**
+ * @brief Serializes a single group permission struct into a byte buffer.
+ */
 static void serialize_permission(uint8_t *out, group_permission_t *perm) {
     // group_id in big-endian
     out[0] = (perm->group_id >> 8) & 0xFF;
@@ -392,8 +365,10 @@ static void serialize_permission(uint8_t *out, group_permission_t *perm) {
     out[4] = perm->receive ? 1 : 0;
 }
 
+/**
+ * @brief Deserializes a byte buffer into a group permission struct.
+ */
 static void deserialize_permission(const uint8_t *in, group_permission_t *perm) {
-    // group_id was big-endian
     perm->group_id = ((uint16_t)in[0] << 8) | (uint16_t)in[1];
 
     perm->read    = in[2] ? true : false;
@@ -401,6 +376,9 @@ static void deserialize_permission(const uint8_t *in, group_permission_t *perm) 
     perm->receive = in[4] ? true : false;
 }
 
+/**
+ * @brief Serializes a full interrogate request payload.
+ */
 static void serialize_request(uint8_t *buffer, interrogate_request_t *req) {
     uint32_t offset = 0;
 
@@ -410,6 +388,9 @@ static void serialize_request(uint8_t *buffer, interrogate_request_t *req) {
     }
 }
 
+/**
+ * @brief Deserializes a full interrogate request payload.
+ */
 static void deserialize_request(const uint8_t *buffer, interrogate_request_t *req) {
     uint32_t offset = 0;
 
@@ -420,6 +401,9 @@ static void deserialize_request(const uint8_t *buffer, interrogate_request_t *re
     }
 }
 
+/**
+ * @brief Applies custom padding to the serialized interrogation request.
+ */
 static void pad_request(uint8_t *buffer) {
     for (uint32_t i = 0; i < REQUEST_PAD_LEN; i++)
         buffer[REQUEST_SERIALIZED_SIZE + i] = REQUEST_PAD_LEN; 
@@ -435,7 +419,6 @@ uint8_t encrypt_perms(interrogate_request_t *request, uint8_t *enc_request) {
     memset(padded, 0, sizeof(padded));
 
     // create iv 
-    // uncomment after everything is merged and can access generate_random_bytes
     ret = generate_random_bytes(iv, AES_IV_SIZE);
     if (ret != 0) return ret;
 
@@ -502,20 +485,20 @@ void secure_zero(void* v, size_t n)
 {
     volatile uint8_t* p8 = (volatile uint8_t*)v;
 
-    // 1) wipe bytes until 4-byte aligned
+    // wipe bytes until 4-byte aligned
     while (n && (((uintptr_t)p8) & 3u)) {
         *p8++ = 0;
         n--;
     }
 
-    // 2) wipe 32-bit chunks (now aligned)
+    // wipe 32-bit chunks (now aligned)
     volatile uint32_t* p32 = (volatile uint32_t*)p8;
     while (n >= sizeof(uint32_t)) {
         *p32++ = 0;
         n -= sizeof(uint32_t);
     }
 
-    // 3) wipe remaining bytes
+    // wipe remaining bytes
     p8 = (volatile uint8_t*)p32;
     while (n--) {
         *p8++ = 0;
@@ -525,9 +508,6 @@ void secure_zero(void* v, size_t n)
 int generate_random_bytes(uint8_t *output, uint32_t length) {
     if (!prng_seeded) {
         if (init_crypto_engine() != 0) return -1;
-        
-        print_debug("PRNG: Gathering hardware entropy for master seed...");
-        DL_Common_delayCycles(3200000); 
         
         for(int i = 0; i < 32; i += 4) {
             int hardware_retries = 20;
@@ -539,7 +519,6 @@ int generate_random_bytes(uint8_t *output, uint32_t length) {
             }
         }
         prng_seeded = true;
-        print_debug("PRNG: Master seed secured!");
     }
 
     uint8_t hash[WC_SHA256_DIGEST_SIZE];
@@ -568,16 +547,13 @@ int sign_data_cmac(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_
     int ret;
     word32 outLen = WC_AES_BLOCK_SIZE; // Use standard AES block size (16 bytes)
 
-    print_debug("init_crypto_engine");
     if (init_crypto_engine() != 0) return -1;
 
     // Initialize CMAC with AES-256
-    print_debug("Initialize CMAC with AES-256");
     ret = wc_InitCmac(&cmac, RECEIVE_AES_KEY, 32, WC_CMAC_AES, NULL);
     if (ret != 0) return ret;
 
     // Update the CMAC with the input data
-    print_debug("wc_CmacUpdate");
     ret = wc_CmacUpdate(&cmac, input, input_len);
     if (ret != 0) {
         secure_zero(&cmac, sizeof(cmac));
@@ -585,14 +561,12 @@ int sign_data_cmac(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_
     }
 
     // Generate the final 16-byte MAC
-    print_debug("GENERATING CMAC");
     ret = wc_CmacFinal(&cmac, signature, &outLen);
     if (ret == 0) {
         *sig_len = (uint32_t)outLen;
     }
 
     // Clean up
-    print_debug("DONE SIGNING");
     secure_zero(&cmac, sizeof(cmac));
     return ret; 
 }
@@ -605,9 +579,8 @@ int check_signature_cmac(uint16_t group_id, uint8_t* input, uint32_t input_len, 
     if (init_crypto_engine() != 0) return -1;
     if (!validate_permission(group_id, PERM_RECEIVE)) return PERMISSION_DENIED;
 
-    // Fast fail: AES-CMAC must always be exactly 16 bytes
+    // AES-CMAC must always be exactly 16 bytes
     if (sig_len != WC_AES_BLOCK_SIZE) {
-        print_debug("check_signature_cmac: Invalid CMAC length");
         return -1; 
     }
 
@@ -615,13 +588,12 @@ int check_signature_cmac(uint16_t group_id, uint8_t* input, uint32_t input_len, 
     ret = sign_data_cmac(group_id, input, input_len, expected_mac, &expected_mac_len);
     if (ret != 0) return ret;
 
-    // Use constant-time comparison to prevent timing side-channel attacks!
+    // Use constant-time comparison to prevent timing side-channel attacks
     if (!constant_time_compare(expected_mac, signature, WC_AES_BLOCK_SIZE)) {
-        print_debug("check_signature_cmac: CMAC mismatch (Tampered or Wrong Key)!");
         secure_zero(expected_mac, sizeof(expected_mac));
         return -1; 
     }
 
     secure_zero(expected_mac, sizeof(expected_mac));
-    return 0; // Signature is VALID
+    return 0;
 }

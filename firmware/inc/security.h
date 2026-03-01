@@ -59,13 +59,32 @@ typedef struct {
     group_permission_t permissions[MAX_PERMS];
 } interrogate_request_t; 
 
-/** @brief Validate a pin against the HSM's pin */
+/**
+ * @brief Hashes an input PIN and verifies it against the stored HSM PIN.
+ *
+ * Uses SHA-256 to hash the input and compares the result to HSM_PIN_HASH 
+ * using a constant-time comparison to prevent timing attacks.
+ *
+ * @param pin Pointer to the plaintext PIN array.
+ * @return true if the PIN matches, false otherwise.
+ */
 bool check_pin(unsigned char *pin);
 
-/** @brief Ensure the HSM has the requested permission */
+/**
+ * @brief Validates if a group possesses a specific operational permission.
+ *
+ * @param group_id The group ID to check.
+ * @param perm     The specific permission enum (READ, WRITE, RECEIVE) to verify.
+ * @return true if the group has the requested permission, false otherwise.
+ */
 bool validate_permission(uint16_t group_id, permission_enum_t perm);
 
-/** @brief Retrieve the secrets (keys) for a specific group. */
+/**
+ * @brief Retrieves the cryptographic secrets associated with a specific group.
+ *
+ * @param group_id The group ID to look up.
+ * @return Pointer to the group_secrets_t structure, or NULL if not found.
+ */
 const void* get_group_secrets(uint16_t group_id);
 
 /** * @brief Encrypts data using the Group's Write Key (Public Key).
@@ -112,8 +131,28 @@ int sign_data(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* si
  */
 int check_signature(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t sig_len);
 
+/**
+ * @brief Encrypts an interrogate request using AES-CBC and a pre-shared key.
+ *
+ * Serializes, pads, and encrypts the permissions request. The randomly 
+ * generated IV is prepended to the ciphertext.
+ *
+ * @param request     Pointer to the plaintext interrogation request structure.
+ * @param enc_request Pointer to the buffer where the IV + ciphertext will be written.
+ * @return 0 on success, negative error code on failure.
+ */
 uint8_t encrypt_perms(interrogate_request_t *request, uint8_t *enc_request); 
 
+/**
+ * @brief Decrypts an interrogate request using AES-CBC and a pre-shared key.
+ *
+ * Extracts the IV from the header, decrypts the ciphertext, and deserializes 
+ * the payload back into an interrogation request structure.
+ *
+ * @param request     Pointer to the structure to populate with decrypted permissions.
+ * @param enc_request Pointer to the encrypted payload (IV + ciphertext).
+ * @return 0 on success, negative error code on failure.
+ */
 uint8_t decrypt_perms(interrogate_request_t *request, uint8_t *enc_request); 
 
 /** * @brief Generates an AES-CMAC authentication tag.
@@ -138,7 +177,37 @@ int sign_data_cmac(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_
  */
 int check_signature_cmac(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t sig_len);
 
+/** @brief Securely zeroes a region of memory, immune to compiler optimization.
+ *
+ * Uses volatile pointers and aligns memory accesses to ensure sensitive 
+ * data (like keys or plaintext) is definitively wiped from RAM and not 
+ * optimized out by the compiler's dead-store elimination.
+ *
+ * @param v Pointer to the memory region to wipe.
+ * @param n Number of bytes to zeroize.
+ */
 void secure_zero(void* v, size_t n);
+
+/**
+ * @brief Initializes the global cryptographic engine and RNG.
+ *
+ * Ensures the hardware/software RNG backing wolfCrypt is properly 
+ * seeded and ready before any cryptographic operations occur.
+ *
+ * @return 0 on success, -1 on RNG initialization failure.
+ */
 int init_crypto_engine(void);
+
+/**
+ * @brief Generates cryptographically secure random bytes using a software PRNG.
+ *
+ * On first run, it seeds a 32-byte internal state using the hardware TRNG. 
+ * Subsequent calls generate random bytes by hashing the seed alongside an 
+ * incrementing counter (similar to a Hash_DRBG).
+ *
+ * @param output Pointer to the buffer to receive the random bytes.
+ * @param length Number of random bytes requested.
+ * @return 0 on success, -1 if the hardware TRNG fails to provide a seed.
+ */
 int generate_random_bytes(uint8_t *output, uint32_t length);
 #endif  // __SECURITY_H__

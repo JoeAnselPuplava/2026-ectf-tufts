@@ -14,13 +14,6 @@
 #include <stdint.h>
 #include <string.h>
 #include "simple_flash.h"
-// #include "wolfssl/wolfcrypt/rsa.h"
-// #include "wolfssl/wolfcrypt/random.h"
-// #include "wolfssl/wolfcrypt/sha256.h"
-// #include "wolfssl/wolfcrypt/aes.h"
-
-
-// #include "commands.h"
 
 typedef unsigned char slot_t;
 typedef uint16_t group_id_t;
@@ -93,7 +86,6 @@ The new secure design allocates files for each slot right before the FAT:
 #define FILE_PAGE_COUNT 9
 #define STORED_FILE_SIZE FLASH_PAGE_SIZE*FILE_PAGE_COUNT
 
-// --- THE FIX ---
 // Move the file storage from 64KB (0x10000) up to 160KB (0x28000) to make room for WolfSSL!
 #define FILES_START_ADDR 0x28000
 
