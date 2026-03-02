@@ -16,7 +16,7 @@ extern uint32_t app2_end;
 // Use them (note: take address of the symbol)
 uint32_t *app2_flash_addr = (uint32_t *)&app2_start;
 
-#define LOCKOUT_TIME_PERIODS 3  // 4 seconds
+#define LOCKOUT_TIME_PERIODS 3  // 3 seconds
 #define LOCKOUT_PERIOD_DURATION 5000000  // ~1 second at 32MHz
 
 /** @brief Waits a pre-detemined amount of time before allowing the user to attempt a new 
@@ -29,17 +29,12 @@ void pin_lockout(void){
     // Read the current lockout time from flash
     flash_simple_read((uint32_t)app2_flash_addr, &curr_lockout_time, sizeof(curr_lockout_time));
     
-    snprintf(debug_msg, sizeof(debug_msg), "Initial lockout time: %u", curr_lockout_time);
-    
     while (curr_lockout_time > 0) {
-        snprintf(debug_msg, sizeof(debug_msg), "Waiting 1 second... (remaining: %u)", curr_lockout_time);
         
         // wait 1 second
         for (volatile uint32_t i = 0; i < LOCKOUT_PERIOD_DURATION; i++);
         
         curr_lockout_time--;
-        
-        snprintf(debug_msg, sizeof(debug_msg), "New lockout time: %u", curr_lockout_time);
         
         // Erase and write updated lockout time
         flash_simple_erase_page((uint32_t)app2_flash_addr);
