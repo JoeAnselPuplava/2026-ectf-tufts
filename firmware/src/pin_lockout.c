@@ -23,7 +23,6 @@ uint32_t *app2_flash_addr = (uint32_t *)&app2_start;
 *          host commmand after an incorrect pin is entered 
 */
 void pin_lockout(void){
-    char debug_msg[64];
     uint32_t curr_lockout_time;
     
     // Read the current lockout time from flash
