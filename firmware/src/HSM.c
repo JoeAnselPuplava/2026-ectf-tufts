@@ -121,6 +121,9 @@ int main(void) {
             break;
         }
         
+        if (ret == -2) {
+            continue;
+        }
         if (ret != 0) {
             print_error("ERROR");
         }

@@ -104,10 +104,10 @@ int list(uint16_t pkt_len, uint8_t *buf) {
     generate_list_files(&file_list);
     
     if (!check_pin(command->pin)) {
-        print_debug("NOT THE RIGHT PIN");
+        print_error("ERROR");
         wrong_pin_lockout_init();
         pin_lockout();
-        return -1;
+        return -2;
     }
 
     // write success packet with list
@@ -130,9 +130,10 @@ int read(uint16_t pkt_len, uint8_t *buf) {
     read_command_t *command = (read_command_t*)buf;
     
     if (!check_pin(command->pin)) {
+        print_error("ERROR");
         wrong_pin_lockout_init(); 
         pin_lockout(); 
-        return -1;
+        return -2;
     }
 
     memset(&workspace, 0, sizeof(workspace));
@@ -193,9 +194,10 @@ int write(uint16_t pkt_len, uint8_t *buf) {
     memset(&workspace, 0, sizeof(workspace));
 
     if (!check_pin(command->pin)) {
+        print_error("ERROR");
         wrong_pin_lockout_init(); 
         pin_lockout(); 
-        return -1;
+        return -2;
     }
 
     if (!validate_permission(command->group_id, PERM_WRITE)) {
@@ -273,9 +275,10 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     receive_chalresp_t resp;
     
     if (!check_pin(command->pin)) {
+        print_error("ERROR");
         wrong_pin_lockout_init();
         pin_lockout();
-        return -1;
+        return -2;
     }
 
     memset(&req, 0, sizeof(req));
@@ -418,9 +421,10 @@ int interrogate(uint16_t pkt_len, uint8_t *buf) {
 
     // pin check
     if (!check_pin(command->pin)) {
+        print_error("ERROR");
         wrong_pin_lockout_init();
         pin_lockout();
-        return -1;
+        return -2;
     }
 
     // zeroize the buffers we will use
