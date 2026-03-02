@@ -60,7 +60,7 @@ int main(void) {
         ret = 0;
         
         STATUS_LED_ON();
-        
+
         pkt_len = 0;
         result = read_packet(CONTROL_INTERFACE, &cmd, uart_buf, &pkt_len, sizeof(uart_buf));
 
@@ -119,10 +119,6 @@ int main(void) {
         default:
             print_error("ERROR");
             break;
-        }
-        
-        if (ret == -2) {
-            continue;
         }
         if (ret != 0) {
             print_error("ERROR");
