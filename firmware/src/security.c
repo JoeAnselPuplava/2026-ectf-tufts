@@ -582,7 +582,6 @@ int check_signature_cmac(uint16_t group_id, uint8_t* input, uint32_t input_len, 
     int ret;
 
     if (init_crypto_engine() != 0) return -1;
-    if (!validate_permission(group_id, PERM_RECEIVE)) return PERMISSION_DENIED;
 
     // AES-CMAC must always be exactly 16 bytes
     if (sig_len != WC_AES_BLOCK_SIZE) {

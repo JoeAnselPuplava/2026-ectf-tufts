@@ -182,11 +182,16 @@ def secrets_to_c_header(
         f.write("};\n\n")
 
         # Write Global Permissions Array
-        f.write(f"const static group_permission_t global_permissions[{len(permissions)}] = {{\n")
+        f.write(f"const static group_permission_t global_permissions[{8}] = {{\n")
         for perm in permissions:
             f.write(
                 (f"    {{ {hex(perm.group_id)}, {str(perm.read).lower()}, "
                  f"{str(perm.write).lower()}, {str(perm.receive).lower()} }},\n")
+            )
+        for i in range(0, (8 - len(permissions))):
+            f.write(
+                (f"    {{ {0x0000}, {"false"}, "
+                 f"{"false"}, {"false"} }},\n")
             )
         f.write("};\n")
         
