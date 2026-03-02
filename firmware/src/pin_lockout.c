@@ -21,34 +21,27 @@ uint32_t *app2_flash_addr = (uint32_t *)&app2_start;
 
 void pin_lockout(void){
     char debug_msg[64];
-    print_debug("Entering PIN lockout");
     uint32_t curr_lockout_time;
     
     // Read the current lockout time from flash
     flash_simple_read((uint32_t)app2_flash_addr, &curr_lockout_time, sizeof(curr_lockout_time));
     
     snprintf(debug_msg, sizeof(debug_msg), "Initial lockout time: %u", curr_lockout_time);
-    print_debug(debug_msg);
     
     while (curr_lockout_time > 0) {
         snprintf(debug_msg, sizeof(debug_msg), "Waiting 1 second... (remaining: %u)", curr_lockout_time);
-        print_debug(debug_msg);
         
         // wait 1 second
         for (volatile uint32_t i = 0; i < LOCKOUT_PERIOD_DURATION; i++);
         
-        print_debug("Lockout period elapsed, decrementing lockout time");
         curr_lockout_time--;
         
         snprintf(debug_msg, sizeof(debug_msg), "New lockout time: %u", curr_lockout_time);
-        print_debug(debug_msg);
         
         // Erase and write updated lockout time
         flash_simple_erase_page((uint32_t)app2_flash_addr);
         flash_simple_write((uint32_t)app2_flash_addr, &curr_lockout_time, sizeof(curr_lockout_time));
     }
-    
-    print_debug("PIN lockout complete");
 }
 
 void wrong_pin_lockout_init(void) {
