@@ -60,7 +60,7 @@ int main(void) {
         ret = 0;
         
         STATUS_LED_ON();
-        print_debug("READY");
+        
         pkt_len = 0;
         result = read_packet(CONTROL_INTERFACE, &cmd, uart_buf, &pkt_len, sizeof(uart_buf));
 
