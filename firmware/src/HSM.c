@@ -58,7 +58,6 @@ int main(void) {
     // process commands forever
     while (1) {
         ret = 0;
-        print_debug("Ready\n");
         
         STATUS_LED_ON();
 
