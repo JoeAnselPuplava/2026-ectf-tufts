@@ -1,5 +1,1 @@
-<<<<<<< HEAD
-=======
-hello world
->>>>>>> cdc6699 (nathan)
 herro world, my name is Jet
