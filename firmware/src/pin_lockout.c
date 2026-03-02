@@ -19,6 +19,9 @@ uint32_t *app2_flash_addr = (uint32_t *)&app2_start;
 #define LOCKOUT_TIME_PERIODS 3  // 4 seconds
 #define LOCKOUT_PERIOD_DURATION 5000000  // ~1 second at 32MHz
 
+/** @brief Waits a pre-detemined amount of time before allowing the user to attempt a new 
+*          host commmand after an incorrect pin is entered 
+*/
 void pin_lockout(void){
     char debug_msg[64];
     uint32_t curr_lockout_time;
@@ -44,6 +47,8 @@ void pin_lockout(void){
     }
 }
 
+/** @brief Handles flash memory maintenance for pin lockout
+*/
 void wrong_pin_lockout_init(void) {
     uint32_t lockout_time = LOCKOUT_TIME_PERIODS;
     flash_simple_erase_page((uint32_t)app2_flash_addr);

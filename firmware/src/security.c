@@ -75,6 +75,15 @@ bool constant_time_compare(uint8_t* a, const uint8_t* b, size_t len) {
     return diff == 0;
 }
 
+/**
+ * @brief Hashes an input PIN and verifies it against the stored HSM PIN.
+ *
+ * Uses SHA-256 to hash the input and compares the result to HSM_PIN_HASH 
+ * using a constant-time comparison to prevent timing attacks.
+ *
+ * @param pin Pointer to the plaintext PIN array.
+ * @return true if the PIN matches, false otherwise.
+ */
 bool check_pin(unsigned char *pin) {
     uint8_t hash[WC_SHA256_DIGEST_SIZE] = {0};
     wc_Sha256 sha;
@@ -85,6 +94,12 @@ bool check_pin(unsigned char *pin) {
     return (constant_time_compare(hash, HSM_PIN_HASH, WC_SHA256_DIGEST_SIZE));
 }
 
+/**
+ * @brief Retrieves the cryptographic secrets associated with a specific group.
+ *
+ * @param group_id The group ID to look up.
+ * @return Pointer to the group_secrets_t structure, or NULL if not found.
+ */
 const void* get_group_secrets(uint16_t group_id) {
     for(int i = 0; i < MAX_PERMS; i++) {
         if (global_permissions[i].group_id == group_id) {
@@ -94,6 +109,13 @@ const void* get_group_secrets(uint16_t group_id) {
     return NULL;
 }
 
+/**
+ * @brief Validates if a group possesses a specific operational permission.
+ *
+ * @param group_id The group ID to check.
+ * @param perm     The specific permission enum (READ, WRITE, RECEIVE) to verify.
+ * @return true if the group has the requested permission, false otherwise.
+ */
 bool validate_permission(uint16_t group_id, permission_enum_t perm) {
     for(int i = 0; i < MAX_PERMS; i++) {
         if (global_permissions[i].group_id == group_id) {
@@ -110,6 +132,15 @@ bool validate_permission(uint16_t group_id, permission_enum_t perm) {
 
 // --- Crypto Operations ---
 
+/** * @brief Encrypts data using the Group's Write Key (Public Key).
+ * Requires PERM_WRITE.
+ * @param group_id The group ID to use.
+ * @param input Pointer to data to encrypt.
+ * @param input_len Length of input data.
+ * @param output Pointer to buffer for encrypted data. MUST be larger than input! (See ECC_MSG_OVERHEAD)
+ * @param output_len In: Size of output buffer. Out: Bytes written.
+ * @return 0 on success, non-zero on error.
+ */
 int encrypt_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, uint8_t* output, uint32_t* output_len) {
     ecc_key ephemeral_key;
     Aes aes;
@@ -170,6 +201,15 @@ cleanup:
     return ret;
 }
 
+/** * @brief Decrypts data using the Group's Read Key (Private Key).
+ * Requires PERM_READ.
+ * @param group_id The group ID to use.
+ * @param input Pointer to encrypted data.
+ * @param input_len Length of encrypted data.
+ * @param output Pointer to buffer for decrypted data.
+ * @param output_len In: Size of output buffer. Out: Bytes written.
+ * @return 0 on success, non-zero on error.
+ */
 int decrypt_data(uint16_t group_id, const uint8_t* input, uint32_t input_len, uint8_t* output, uint32_t* output_len) {
     ecc_key ephemeral_pub_key; 
     Aes aes;
@@ -245,7 +285,15 @@ cleanup:
     return ret;
 }
 
-
+/** * @brief Signs data using the Group's Verify Key (Private Key).
+ * Requires PERM_RECEIVE.
+ * @param group_id The group ID to use.
+ * @param input Pointer to data to sign.
+ * @param input_len Length of input data.
+ * @param signature Pointer to buffer for the signature.
+ * @param sig_len In: Size of sig buffer (Use ECC_SIG_SIZE). Out: Bytes written.
+ * @return 0 on success, non-zero on error.
+ */
 int sign_data(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t* sig_len) {
     static ecc_key cached_sign_key;
     static uint16_t cached_sign_group_id = 0xFFFF;
@@ -301,6 +349,15 @@ int sign_data(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* si
     return ret;
 }
 
+/** * @brief Checks (verifies) a signature using the Group's Check Key (Public Key).
+ * Requires PERM_RECEIVE.
+ * @param group_id The group ID to use.
+ * @param input Pointer to the original data.
+ * @param input_len Length of input data.
+ * @param signature Pointer to the signature to verify.
+ * @param sig_len Length of the signature.
+ * @return 0 if signature is VALID, non-zero if INVALID or error.
+ */
 int check_signature(uint16_t group_id, uint8_t* input, uint32_t input_len,  uint8_t* signature, uint32_t sig_len) {
     static ecc_key cached_check_key;
     static uint16_t cached_check_group_id = 0xFFFF;
@@ -414,6 +471,12 @@ static void pad_request(uint8_t *buffer) {
         buffer[REQUEST_SERIALIZED_SIZE + i] = REQUEST_PAD_LEN; 
 }
 
+/** * @brief Encrypts list of permissions sent by interrogating HSM to listening HSM.
+ * 
+ * @param request Pointer to the request containg the permissions list 
+ * @param enc_request Pointer to buffer where encrypted request should be stored
+ * @return 0 if encryption is successful, non-zero on error
+ */
 uint8_t encrypt_perms(interrogate_request_t *request, uint8_t *enc_request) { 
     int ret; 
     Aes aes; 
@@ -452,6 +515,12 @@ uint8_t encrypt_perms(interrogate_request_t *request, uint8_t *enc_request) {
     return ret; 
 }
 
+/** * @brief Decrypts list of permissions received by listening HSM from interrogating HSM.
+ * 
+ * @param request Pointer to the struct where the decrypted request should be stored 
+ * @param enc_request Pointer to buffer contiaing the encrypted request 
+ * @return 0 if decryption is successful, non-zero on error
+ */
 uint8_t decrypt_perms(interrogate_request_t *request, uint8_t *enc_request) {
     int ret; 
     Aes aes; 
@@ -486,6 +555,15 @@ uint8_t decrypt_perms(interrogate_request_t *request, uint8_t *enc_request) {
     return 0; 
 }
 
+/** @brief Securely zeroes a region of memory, immune to compiler optimization.
+ *
+ * Uses volatile pointers and aligns memory accesses to ensure sensitive 
+ * data (like keys or plaintext) is definitively wiped from RAM and not 
+ * optimized out by the compiler's dead-store elimination.
+ *
+ * @param v Pointer to the memory region to wipe.
+ * @param n Number of bytes to zeroize.
+ */
 void secure_zero(void* v, size_t n)
 {
     volatile uint8_t* p8 = (volatile uint8_t*)v;
@@ -510,6 +588,17 @@ void secure_zero(void* v, size_t n)
     }
 }
 
+/**
+ * @brief Generates cryptographically secure random bytes using a software PRNG.
+ *
+ * On first run, it seeds a 32-byte internal state using the hardware TRNG. 
+ * Subsequent calls generate random bytes by hashing the seed alongside an 
+ * incrementing counter (similar to a Hash_DRBG).
+ *
+ * @param output Pointer to the buffer to receive the random bytes.
+ * @param length Number of random bytes requested.
+ * @return 0 on success, -1 if the hardware TRNG fails to provide a seed.
+ */
 int generate_random_bytes(uint8_t *output, uint32_t length) {
     if (!prng_seeded) {
         if (init_crypto_engine() != 0) return -1;
@@ -547,6 +636,15 @@ int generate_random_bytes(uint8_t *output, uint32_t length) {
     return 0;
 }
 
+/** * @brief Generates an AES-CMAC authentication tag.
+ * Requires PERM_RECEIVE.
+ * @param group_id The group ID to use.
+ * @param input Pointer to data to sign.
+ * @param input_len Length of input data.
+ * @param signature Pointer to buffer for the MAC.
+ * @param sig_len In: Size of sig buffer. Out: Bytes written (always 16 for AES).
+ * @return 0 on success, non-zero on error.
+ */
 int sign_data_cmac(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t* sig_len) {
     Cmac cmac;
     int ret;
@@ -576,6 +674,15 @@ int sign_data_cmac(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_
     return ret; 
 }
 
+/** * @brief Verifies an AES-CMAC authentication tag.
+ * Requires PERM_RECEIVE.
+ * @param group_id The group ID to use.
+ * @param input Pointer to the original data.
+ * @param input_len Length of input data.
+ * @param signature Pointer to the MAC to verify.
+ * @param sig_len Length of the MAC (must be 16).
+ * @return 0 if MAC is VALID, non-zero if INVALID or error.
+ */
 int check_signature_cmac(uint16_t group_id, uint8_t* input, uint32_t input_len, uint8_t* signature, uint32_t sig_len) {
     uint8_t expected_mac[WC_AES_BLOCK_SIZE];
     uint32_t expected_mac_len = WC_AES_BLOCK_SIZE;

@@ -279,6 +279,18 @@ static int aes_cbc_decrypt_direct(const uint8_t* key, const uint8_t* iv,
 
 /* ========================= Public API ========================= */
 
+/** @brief Create a new encrypted file object in memory
+ *
+ *  Uses RSA-OAEP + AES-CTR encryption
+ *
+ * @param dest           Destination file structure
+ * @param group_id       Group ID for access control
+ * @param name           Filename
+ * @param contents_len   Length of plaintext
+ * @param contents_plain Plaintext data
+ *
+ * @return 0 upon success. A negative value otherwise.
+*/
 int create_file(
     file_t *dest,
     group_id_t group_id,
@@ -365,6 +377,16 @@ int create_file(
     return 0;
 }
 
+/** @brief Decrypt file contents
+ *
+ * @param src            Source encrypted file
+ * @param group_id       Group ID (for future AAD binding)
+ * @param name           Filename (for future AAD binding)
+ * @param out_plain      Output buffer for plaintext
+ * @param out_plain_len  Input: buffer size, Output: actual plaintext length
+ *
+ * @return 0 upon success. A negative value otherwise.
+*/
 int decrypt_file_contents(
     const file_t* src,
     group_id_t group_id,
@@ -429,6 +451,13 @@ int decrypt_file_contents(
     return 0;
 }
 
+/** @brief Read a file from persistent storage into memory
+ *
+ *  @param slot The slot to read
+ *  @param dest The destination address to store the file
+ *
+ * @return 0 upon success. A negative value otherwise.
+*/
 int read_file(slot_t slot, file_t *dest) {
     int flash_addr, file_size;
 

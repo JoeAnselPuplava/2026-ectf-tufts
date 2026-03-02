@@ -1,5 +1,5 @@
 """
-Author: Samuel Meyers
+Author: Ming Dynasty
 Date: 2026
 """
 
