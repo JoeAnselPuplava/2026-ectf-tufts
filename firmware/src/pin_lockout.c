@@ -16,7 +16,7 @@ extern uint32_t app2_end;
 // Use them (note: take address of the symbol)
 uint32_t *app2_flash_addr = (uint32_t *)&app2_start;
 
-#define LOCKOUT_TIME_PERIODS 3  // 3 seconds
+#define LOCKOUT_TIME_PERIODS 1  // 1 second
 #define LOCKOUT_PERIOD_DURATION 5000000  // ~1 second at 32MHz
 
 /** @brief Waits a pre-detemined amount of time before allowing the user to attempt a new 
