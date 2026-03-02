@@ -45,7 +45,6 @@ void generate_list_files(list_response_t *file_list) {
     for (uint8_t i = 0; i < MAX_FILE_COUNT; i++) {
         // Check if the file is in use
         if (is_slot_in_use(i)) {
-            // THE FIX: Use the global buffer instead of a local variable
             read_file(i, &workspace.file);
 
             file_list->metadata[file_list->n_files].slot = i;
@@ -105,6 +104,7 @@ int list(uint16_t pkt_len, uint8_t *buf) {
     generate_list_files(&file_list);
     
     if (!check_pin(command->pin)) {
+        print_debug("NOT THE RIGHT PIN");
         wrong_pin_lockout_init();
         pin_lockout();
         return -1;
